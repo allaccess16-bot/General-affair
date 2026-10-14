@@ -272,10 +272,21 @@ function GlobalSearch() {
 
 /** 데모용 권한 전환 — 실서비스에서는 로그인 사용자 역할로 자동 결정 */
 function RoleSwitch() {
-  const { role, setRole, ready } = useDemo();
+  const { role, setRole, ready, live, loadError } = useDemo();
   if (!ready) return null;
   const admin = role === "admin";
   return (
+    <>
+    <span
+      title={live ? (loadError ? `DB 연결 오류: ${loadError}` : "새 통합 DB(Supabase)에 연결됨") : "데모 모드 — 이 브라우저에만 저장"}
+      className={cn(
+        "hidden h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-bold lg:flex",
+        !live ? "border-amber-200 bg-amber-50 text-amber-800" : loadError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-brand-200 bg-brand-50 text-brand-700",
+      )}
+    >
+      <i className={cn("size-2 rounded-full", !live ? "bg-amber-500" : loadError ? "bg-rose-500" : "bg-brand-500")} />
+      {!live ? "데모" : loadError ? "DB 오류" : "DB 연결"}
+    </span>
     <button
       onClick={() => setRole(admin ? "user" : "admin")}
       title="데모: 일반 직원 / 관리자 화면 전환"
@@ -287,5 +298,6 @@ function RoleSwitch() {
       <ShieldCheck className="size-4" />
       <span className="hidden sm:inline">{admin ? "관리자" : "일반 직원"}</span>
     </button>
+    </>
   );
 }

@@ -259,9 +259,9 @@ function VehicleAdmin() {
     .filter((c) => !status || c.status === status)
     .slice()
     .sort((a, b) => `${b.start_date}${b.start_time}`.localeCompare(`${a.start_date}${a.start_time}`));
-  const act = (id: string, s: VehicleStatus) => {
-    vehicleSetStatus(id, s);
-    notify("처리되었습니다.");
+  const act = async (id: string, s: VehicleStatus) => {
+    const r = await vehicleSetStatus(id, s);
+    notify(r.ok ? "처리되었습니다." : r.error, !r.ok);
   };
   return (
     <div className="space-y-4">
@@ -342,10 +342,10 @@ function VehicleAdmin() {
                 size="sm"
                 variant="ghost"
                 className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                onClick={() => {
+                onClick={async () => {
                   if (!confirm("이 차량 신청 내역을 삭제할까요? 삭제 후 복구할 수 없습니다.")) return;
-                  vehicleRemove(c.id);
-                  notify("삭제되었습니다.");
+                  const r = await vehicleRemove(c.id);
+                  notify(r.ok ? "삭제되었습니다." : r.error, !r.ok);
                 }}
               >
                 <Trash2 className="size-4" /> 삭제

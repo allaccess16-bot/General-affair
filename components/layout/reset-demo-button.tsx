@@ -4,7 +4,8 @@ import { RotateCcw } from "lucide-react";
 import { useDemo } from "@/components/providers/demo-store";
 
 export function ResetDemoButton() {
-  const { resetDemo, notify } = useDemo();
+  const { resetDemo, notify, live, ready } = useDemo();
+  if (!ready || live) return null;
   return (
     <button
       className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 font-semibold text-ink-2 hover:border-brand-200 hover:text-brand-700"

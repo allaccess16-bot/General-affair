@@ -245,10 +245,10 @@ function Mine() {
     });
   }, [items, now]);
 
-  const run = (id: string, action: "checkin" | "cancel") => {
+  const run = async (id: string, action: "checkin" | "cancel") => {
     const c = codeMap.get(id) ?? "";
     if (action === "cancel" && !confirm("이 예약을 취소할까요?")) return;
-    const r = meetingManage(id, c, action);
+    const r = await meetingManage(id, c, action);
     notify(r.ok ? (action === "checkin" ? "사용 확인이 완료되었습니다." : "예약이 취소되었습니다.") : r.error, !r.ok);
   };
 
@@ -261,11 +261,13 @@ function Mine() {
         </div>
         <form
           className="flex gap-2"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             const c = code.trim().toUpperCase();
             if (!c) return notify("예약코드를 입력해주세요.", true);
-            const n = meetingFindByCode(c);
+            const res = await meetingFindByCode(c);
+            if (!res.ok) return notify(res.error, true);
+            const n = res.data ?? 0;
             notify(n ? `예약 ${n}건을 이 기기에 불러왔습니다.` : "일치하는 예약코드가 없습니다.", !n);
             if (n) setCode("");
           }}
@@ -356,9 +358,9 @@ function Mine() {
                       size="sm"
                       variant="ghost"
                       className="bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-700"
-                      onClick={() => {
+                      onClick={async () => {
                         if (!confirm(`남은 ${active.length}회 일정을 모두 취소할까요?`)) return;
-                        const r = meetingCancelSeries(g.id, codeMap.get(first.id) ?? "");
+                        const r = await meetingCancelSeries(g.id, codeMap.get(first.id) ?? "");
                         notify(r.ok ? `반복예약 ${r.data}회를 취소했습니다.` : r.error, !r.ok);
                       }}
                     >
@@ -447,15 +449,15 @@ function Admin() {
                 key={r.id}
                 r={r}
                 room={rooms.find((x) => x.id === r.room_id)}
-                onCancel={() => {
+                onCancel={async () => {
                   if (!confirm("이 예약을 강제취소할까요?")) return;
-                  meetingAdminCancel(r.id);
-                  notify("예약을 강제취소했습니다.");
+                  const res = await meetingAdminCancel(r.id);
+                  notify(res.ok ? "예약을 강제취소했습니다." : res.error, !res.ok);
                 }}
-                onCancelSeries={() => {
+                onCancelSeries={async () => {
                   if (!confirm("이 반복예약의 남은 일정을 모두 취소할까요?")) return;
-                  meetingAdminCancelSeries(r.series_id!);
-                  notify("반복예약 전체를 취소했습니다.");
+                  const res = await meetingAdminCancelSeries(r.series_id!);
+                  notify(res.ok ? "반복예약 전체를 취소했습니다." : res.error, !res.ok);
                 }}
               />
             ))}
@@ -479,9 +481,9 @@ function Admin() {
                   size="sm"
                   variant={r.active ? "ghost" : "primary"}
                   className={r.active ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700" : ""}
-                  onClick={() => {
-                    meetingSetRoomActive(r.id, !r.active);
-                    notify(r.active ? `${r.name} 운영을 중지했습니다.` : `${r.name} 운영을 재개했습니다.`);
+                  onClick={async () => {
+                    const res = await meetingSetRoomActive(r.id, !r.active);
+                    notify(!res.ok ? res.error : r.active ? `${r.name} 운영을 중지했습니다.` : `${r.name} 운영을 재개했습니다.`, !res.ok);
                   }}
                 >
                   {r.active ? "운영중지" : "운영재개"}

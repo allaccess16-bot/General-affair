@@ -1,13 +1,11 @@
 "use client";
 
 /**
- * 데모 데이터 저장소 — 기존 3개 시스템의 데이터 구조·업무 규칙을 브라우저에서 재현합니다.
- * 데이터는 이 브라우저의 localStorage에만 저장됩니다(운영 DB와 연결되지 않음).
- *
- * 실데이터 연결 시: 각 action을 기존 Supabase 호출로 교체합니다.
- *  - 총무:  from('requests').insert/update/delete
- *  - 차량:  from('vehicle_reservations').insert/update/delete
- *  - 회의실: rpc('create_reservation' | 'create_recurring_reservations' | 'manage_reservation' | ...)
+ * 업무 데이터 저장소
+ *  - 실DB 모드: NEXT_PUBLIC_SUPABASE_URL·ANON_KEY 설정 시 새 통합 DB(Supabase)를 읽고 씁니다 (lib/db/live.ts).
+ *    중복예약·상태 전이·신청번호는 DB가 검증하며, 20초마다 다시 읽어 다른 사용자의 변경을 반영합니다.
+ *  - 데모 모드: 설정이 없으면 기존 3개 시스템의 구조·규칙을 브라우저(localStorage)에서 재현합니다.
+ * 화면은 모드와 관계없이 같은 action(모두 Promise<Result>)을 호출합니다.
  */
 import { AnimatePresence, motion } from "framer-motion";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +25,9 @@ import { nextRequestNo, type SealInput, type SealRequest, type SealStatus } from
 import { seedGa, seedMeeting, seedRooms, seedSeal, seedVehicles } from "@/lib/seed";
 import { addDays, nowIso, todayStr, uid } from "@/lib/shared";
 import { findConflicts, resEnd, resStart, type CompletionInput, type VehicleInput, type VehicleReservation, type VehicleStatus } from "@/lib/vehicle";
+import * as live from "@/lib/db/live";
+
+const LIVE_MINE_KEY = "hanaworks-live-my-meeting";
 
 const KEY = "hanaworks-demo-v4";
 
@@ -51,30 +52,37 @@ export type SealAction =
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string; conflicts?: MeetingReservation[] };
 
+type P<T = unknown> = Promise<Result<T>>;
+
 type Ctx = State & {
   ready: boolean;
+  /** 새 통합 DB 연결 여부 (false면 데모 모드) */
+  live: boolean;
+  loadError: string | null;
+  reload: () => Promise<void>;
   role: Role;
   setRole: (r: Role) => void;
   notify: (msg: string, error?: boolean) => void;
   resetDemo: () => void;
-  ga: GaRequest[];
-  gaCreate: (input: GaRequestInput) => GaRequest;
-  gaUpdate: (id: string, patch: Partial<GaRequest>) => void;
-  gaRemove: (id: string) => void;
-  vehicleCreate: (input: VehicleInput) => Result<VehicleReservation>;
-  vehicleEdit: (id: string, password: string, patch: Partial<VehicleInput>) => Result;
-  vehicleSetStatus: (id: string, status: VehicleStatus) => void;
-  vehicleComplete: (id: string, password: string, input: CompletionInput) => Result;
-  vehicleRemove: (id: string) => void;
-  meetingCreate: (p: MeetingCreate) => Result<{ code: string; count: number }>;
-  meetingManage: (id: string, code: string, action: "checkin" | "cancel") => Result;
-  meetingCancelSeries: (seriesId: string, code: string) => Result<number>;
-  meetingFindByCode: (code: string) => number;
-  meetingAdminCancel: (id: string) => void;
-  meetingAdminCancelSeries: (seriesId: string) => void;
-  meetingSetRoomActive: (roomId: string, active: boolean) => void;
-  sealCreate: (input: SealInput) => SealRequest;
-  sealAct: (id: string, action: SealAction) => Result;
+  gaCreate: (input: GaRequestInput) => P;
+  gaUpdate: (id: string, patch: Partial<GaRequest>) => P;
+  gaEdit: (id: string, password: string, patch: { title: string; description: string; location: string }) => P;
+  gaRemove: (id: string) => P;
+  vehicleCreate: (input: VehicleInput) => P;
+  vehicleEdit: (id: string, password: string, patch: Partial<VehicleInput>) => P;
+  vehicleSetStatus: (id: string, status: VehicleStatus) => P;
+  vehicleComplete: (id: string, password: string, input: CompletionInput) => P;
+  vehicleRemove: (id: string) => P;
+  meetingCreate: (p: MeetingCreate) => P<{ code: string; count: number }>;
+  meetingManage: (id: string, code: string, action: "checkin" | "cancel") => P;
+  meetingCancelSeries: (seriesId: string, code: string) => P<number>;
+  meetingFindByCode: (code: string) => P<number>;
+  meetingAdminCancel: (id: string) => P;
+  meetingAdminCancelSeries: (seriesId: string) => P;
+  meetingSetRoomActive: (roomId: string, active: boolean) => P;
+  /** 성공 시 data = 신청번호 */
+  sealCreate: (input: SealInput) => P<string>;
+  sealAct: (id: string, action: SealAction) => P;
 };
 
 export type MeetingCreate = {
@@ -106,36 +114,64 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!live.LIVE) return;
+    try {
+      const data = await live.loadAll();
+      setState((s) => ({ ...s, ...data }));
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(live.friendly(e));
+    }
+  }, []);
+
   // 마운트 후 로드 (SSR 하이드레이션 불일치 방지)
   useEffect(() => {
+    try {
+      const savedRole = localStorage.getItem(`${KEY}:role`);
+      if (savedRole === "admin" || savedRole === "user") setRoleState(savedRole);
+    } catch {}
+    if (live.LIVE) {
+      let mine: Mine[] = [];
+      try {
+        mine = JSON.parse(localStorage.getItem(LIVE_MINE_KEY) || "[]");
+      } catch {}
+      setState((s) => ({ ...s, myMeeting: Array.isArray(mine) ? mine : [] }));
+      reload().finally(() => setReady(true));
+      return;
+    }
     let loaded: State | null = null;
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) loaded = JSON.parse(raw);
-      const savedRole = localStorage.getItem(`${KEY}:role`);
-      if (savedRole === "admin" || savedRole === "user") setRoleState(savedRole);
     } catch {}
     const s = loaded && Array.isArray(loaded.ga) && Array.isArray(loaded.seal) ? loaded : initial();
     setState({ ...s, meeting: sweepStatuses(s.meeting) });
     setReady(true);
-  }, []);
+  }, [reload]);
 
+  // 저장: 데모는 전체, 실DB는 '내 예약 코드'만 이 기기에 보관
   useEffect(() => {
     if (!ready) return;
     try {
-      localStorage.setItem(KEY, JSON.stringify(state));
+      if (live.LIVE) localStorage.setItem(LIVE_MINE_KEY, JSON.stringify(state.myMeeting.slice(0, 2000)));
+      else localStorage.setItem(KEY, JSON.stringify(state));
     } catch {}
   }, [state, ready]);
 
-  // 회의실 자동취소·사용완료 처리 (30초 주기)
+  // 데모: 회의실 자동취소·사용완료 (30초) / 실DB: 다른 사용자 변경 반영 (20초, 서버 pg_cron이 상태 전환)
   useEffect(() => {
     if (!ready) return;
-    const t = setInterval(() => setState((s) => {
-      const m = sweepStatuses(s.meeting);
-      return m === s.meeting ? s : { ...s, meeting: m };
-    }), 30000);
+    const t = live.LIVE
+      ? setInterval(() => !document.hidden && reload(), 20000)
+      : setInterval(() => setState((s) => {
+          const m = sweepStatuses(s.meeting);
+          return m === s.meeting ? s : { ...s, meeting: m };
+        }), 30000);
     return () => clearInterval(t);
-  }, [ready]);
+  }, [ready, reload]);
 
   const notify = useCallback((msg: string, error = false) => setToast({ msg, error, key: Date.now() }), []);
   useEffect(() => {
@@ -154,18 +190,18 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   const resetDemo = useCallback(() => setState(initial()), []);
 
   /* ---------- 총무 업무요청 ---------- */
-  const gaCreate = useCallback((input: GaRequestInput) => {
+  const d_gaCreate = useCallback((input: GaRequestInput) => {
     const row: GaRequest = { ...input, id: uid(), status: "접수", assignee: null, admin_memo: null, completed_at: null, created_at: nowIso(), updated_at: nowIso() };
     setState((s) => ({ ...s, ga: [row, ...s.ga] }));
     return row;
   }, []);
-  const gaUpdate = useCallback((id: string, patch: Partial<GaRequest>) => {
+  const d_gaUpdate = useCallback((id: string, patch: Partial<GaRequest>) => {
     setState((s) => ({ ...s, ga: s.ga.map((r) => (r.id === id ? { ...r, ...patch, updated_at: nowIso() } : r)) }));
   }, []);
-  const gaRemove = useCallback((id: string) => setState((s) => ({ ...s, ga: s.ga.filter((r) => r.id !== id) })), []);
+  const d_gaRemove = useCallback((id: string) => setState((s) => ({ ...s, ga: s.ga.filter((r) => r.id !== id) })), []);
 
   /* ---------- 법인차량 ---------- */
-  const vehicleCreate = useCallback((input: VehicleInput): Result<VehicleReservation> => {
+  const d_vehicleCreate = useCallback((input: VehicleInput): Result<VehicleReservation> => {
     const start = new Date(`${input.start_date}T${input.start_time}`);
     const end = new Date(`${input.end_date}T${input.end_time}`);
     if (!(start < end)) return { ok: false, error: "반납 예정일시는 사용 시작일시보다 이후여야 합니다." };
@@ -176,7 +212,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, data: row };
   }, []);
 
-  const vehicleEdit = useCallback((id: string, password: string, patch: Partial<VehicleInput>): Result => {
+  const d_vehicleEdit = useCallback((id: string, password: string, patch: Partial<VehicleInput>): Result => {
     const c = stateRef.current.vehicles.find((x) => x.id === id);
     if (!c || c.status !== "신청") return { ok: false, error: "이미 승인 또는 처리된 예약은 수정할 수 없습니다." };
     if ((c.reservation_password || "") !== password) return { ok: false, error: "비밀번호가 일치하지 않습니다." };
@@ -189,11 +225,11 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, []);
 
-  const vehicleSetStatus = useCallback((id: string, status: VehicleStatus) => {
+  const d_vehicleSetStatus = useCallback((id: string, status: VehicleStatus) => {
     setState((s) => ({ ...s, vehicles: s.vehicles.map((x) => (x.id === id ? { ...x, status, updated_at: nowIso() } : x)) }));
   }, []);
 
-  const vehicleComplete = useCallback((id: string, password: string, input: CompletionInput): Result => {
+  const d_vehicleComplete = useCallback((id: string, password: string, input: CompletionInput): Result => {
     const c = stateRef.current.vehicles.find((x) => x.id === id);
     if (!c) return { ok: false, error: "예약 정보를 찾을 수 없습니다." };
     if (c.reservation_password && c.reservation_password !== password) return { ok: false, error: "비밀번호가 일치하지 않습니다." };
@@ -205,10 +241,10 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, []);
 
-  const vehicleRemove = useCallback((id: string) => setState((s) => ({ ...s, vehicles: s.vehicles.filter((x) => x.id !== id) })), []);
+  const d_vehicleRemove = useCallback((id: string) => setState((s) => ({ ...s, vehicles: s.vehicles.filter((x) => x.id !== id) })), []);
 
   /* ---------- 회의실 ---------- */
-  const meetingCreate = useCallback((p: MeetingCreate): Result<{ code: string; count: number }> => {
+  const d_meetingCreate = useCallback((p: MeetingCreate): Result<{ code: string; count: number }> => {
     const s = stateRef.current;
     const room = s.rooms.find((r) => r.id === p.room_id && r.active);
     if (!room) return { ok: false, error: "선택한 날짜·시간에 예약 가능한 회의실을 선택해주세요." };
@@ -240,7 +276,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, data: { code, count: rows.length } };
   }, []);
 
-  const meetingManage = useCallback((id: string, code: string, action: "checkin" | "cancel"): Result => {
+  const d_meetingManage = useCallback((id: string, code: string, action: "checkin" | "cancel"): Result => {
     const r = stateRef.current.meeting.find((x) => x.id === id);
     if (!r || r._code !== code) return { ok: false, error: "예약코드가 일치하지 않습니다." };
     if (!isActive(r)) return { ok: false, error: "처리할 수 없습니다. 예약 상태를 확인해주세요." };
@@ -264,7 +300,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, []);
 
-  const meetingCancelSeries = useCallback((seriesId: string, code: string): Result<number> => {
+  const d_meetingCancelSeries = useCallback((seriesId: string, code: string): Result<number> => {
     const items = stateRef.current.meeting.filter((x) => x.series_id === seriesId);
     if (!items.length || items[0]._code !== code) return { ok: false, error: "예약코드가 일치하지 않습니다." };
     const now = Date.now();
@@ -276,7 +312,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, data: targets.length };
   }, []);
 
-  const meetingFindByCode = useCallback((code: string) => {
+  const d_meetingFindByCode = useCallback((code: string) => {
     const found = stateRef.current.meeting.filter((r) => r._code === code);
     if (found.length)
       setState((st) => {
@@ -286,10 +322,10 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return found.length;
   }, []);
 
-  const meetingAdminCancel = useCallback((id: string) => {
+  const d_meetingAdminCancel = useCallback((id: string) => {
     setState((st) => ({ ...st, meeting: st.meeting.map((x) => (x.id === id ? { ...x, status: "cancelled", cancelled_at: nowIso(), cancel_reason: "admin_cancelled", updated_at: nowIso() } : x)) }));
   }, []);
-  const meetingAdminCancelSeries = useCallback((seriesId: string) => {
+  const d_meetingAdminCancelSeries = useCallback((seriesId: string) => {
     const now = Date.now();
     setState((st) => ({
       ...st,
@@ -298,12 +334,12 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       ),
     }));
   }, []);
-  const meetingSetRoomActive = useCallback((roomId: string, active: boolean) => {
+  const d_meetingSetRoomActive = useCallback((roomId: string, active: boolean) => {
     setState((st) => ({ ...st, rooms: st.rooms.map((r) => (r.id === roomId ? { ...r, active } : r)) }));
   }, []);
 
   /* ---------- 인장 날인 ---------- */
-  const sealCreate = useCallback((input: SealInput) => {
+  const d_sealCreate = useCallback((input: SealInput) => {
     const today = todayStr();
     const at = nowIso();
     const row: SealRequest = {
@@ -322,7 +358,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /** 상태 전이 규칙 — 승인(결재 완료)과 날인완료(실제 날인)는 별도 단계 */
-  const sealAct = useCallback((id: string, a: SealAction): Result => {
+  const d_sealAct = useCallback((id: string, a: SealAction): Result => {
     const r = stateRef.current.seal.find((x) => x.id === id);
     if (!r) return { ok: false, error: "신청 정보를 찾을 수 없습니다." };
     const allowed: Record<SealAction["type"], SealStatus[]> = {
@@ -356,33 +392,116 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   }, []);
 
+  /* ======================= 공개 action (데모 / 실DB) ======================= */
+  const run = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<Result<T>> => {
+      try {
+        const data = await fn();
+        await reload();
+        return { ok: true, data };
+      } catch (e) {
+        return { ok: false, error: live.friendly(e) };
+      }
+    },
+    [reload],
+  );
+  const done = <T = unknown,>(data?: T): Promise<Result<T>> => Promise.resolve({ ok: true, data });
+  const addMine = useCallback((ids: string[], code: string) => setState((s) => ({ ...s, myMeeting: [...ids.map((id) => ({ id, code })), ...s.myMeeting.filter((m) => !ids.includes(m.id))] })), []);
+
+  const api = useMemo(() => {
+    if (!live.LIVE)
+      return {
+        gaCreate: (i: GaRequestInput) => (d_gaCreate(i), done()),
+        gaUpdate: (id: string, p: Partial<GaRequest>) => (d_gaUpdate(id, p), done()),
+        gaEdit: (id: string, pw: string, p: { title: string; description: string; location: string }) => {
+          const r = stateRef.current.ga.find((x) => x.id === id);
+          if (!r) return Promise.resolve<Result>({ ok: false, error: "요청 정보를 찾을 수 없습니다." });
+          if ((r.edit_password || "") !== pw) return Promise.resolve<Result>({ ok: false, error: "비밀번호가 일치하지 않습니다." });
+          d_gaUpdate(id, p);
+          return done();
+        },
+        gaRemove: (id: string) => (d_gaRemove(id), done()),
+        vehicleCreate: async (i: VehicleInput): Promise<Result> => {
+          const r = d_vehicleCreate(i);
+          return r.ok ? { ok: true } : r;
+        },
+        vehicleEdit: async (id: string, pw: string, p: Partial<VehicleInput>) => d_vehicleEdit(id, pw, p),
+        vehicleSetStatus: (id: string, st: VehicleStatus) => (d_vehicleSetStatus(id, st), done()),
+        vehicleComplete: async (id: string, pw: string, c: CompletionInput) => d_vehicleComplete(id, pw, c),
+        vehicleRemove: (id: string) => (d_vehicleRemove(id), done()),
+        meetingCreate: async (p: MeetingCreate) => d_meetingCreate(p),
+        meetingManage: async (id: string, code: string, a: "checkin" | "cancel") => d_meetingManage(id, code, a),
+        meetingCancelSeries: async (sid: string, code: string) => d_meetingCancelSeries(sid, code),
+        meetingFindByCode: (code: string) => done(d_meetingFindByCode(code)),
+        meetingAdminCancel: (id: string) => (d_meetingAdminCancel(id), done()),
+        meetingAdminCancelSeries: (sid: string) => (d_meetingAdminCancelSeries(sid), done()),
+        meetingSetRoomActive: (rid: string, a: boolean) => (d_meetingSetRoomActive(rid, a), done()),
+        sealCreate: (i: SealInput) => done(d_sealCreate(i).request_no),
+        sealAct: async (id: string, a: SealAction) => d_sealAct(id, a),
+      };
+    return {
+      gaCreate: (i: GaRequestInput) => run(() => live.gaCreate(i)),
+      gaUpdate: (id: string, p: Partial<GaRequest>) => run(() => live.gaUpdate(id, p)),
+      gaEdit: (id: string, pw: string, p: { title: string; description: string; location: string }) => run(() => live.gaEdit(id, pw, p)),
+      gaRemove: (id: string) => run(() => live.gaRemove(id)),
+      vehicleCreate: (i: VehicleInput) => run(() => live.vehicleCreate(i)),
+      vehicleEdit: (id: string, pw: string, p: Partial<VehicleInput>) => run(() => live.vehicleEdit(id, pw, p)),
+      vehicleSetStatus: (id: string, st: VehicleStatus) => run(() => live.vehicleSetStatus(id, st)),
+      vehicleComplete: (id: string, pw: string, c: CompletionInput) => run(() => live.vehicleComplete(id, pw, c)),
+      vehicleRemove: (id: string) => run(() => live.vehicleRemove(id)),
+      meetingCreate: async (p: MeetingCreate): Promise<Result<{ code: string; count: number }>> => {
+        const room = stateRef.current.rooms.find((r) => r.id === p.room_id && r.active);
+        if (!room) return { ok: false, error: "선택한 날짜·시간에 예약 가능한 회의실을 선택해주세요." };
+        if (p.attendee_count > room.capacity) return { ok: false, error: `이 회의실은 최대 ${room.capacity}명까지 이용 가능합니다.` };
+        const code = randCode();
+        const base = { room_id: p.room_id, title: p.title, organizer_name: p.organizer_name, department: p.department, attendee_count: p.attendee_count };
+        try {
+          if (p.mode === "single") {
+            const ids = await live.meetingCreateSingle(base, p.date, p.start, p.end, code);
+            addMine(ids, code);
+            await reload();
+            return { ok: true, data: { code, count: 1 } };
+          }
+          const r = await live.meetingCreateRecurring(base, p.date, p.repeatEnd ?? p.date, p.weekdays ?? [], p.start, p.end, code);
+          if (r.status === "conflict") {
+            const conflicts = r.conflicts.map((c, i) => ({ ...c, id: `conflict-${i}`, room_id: p.room_id, attendee_count: 0, status: "reserved" as const, series_id: null, recurrence_label: null, created_at: "", updated_at: "", _code: "" }));
+            return { ok: false, error: `기간 중 기존 예약 ${r.conflict_count}건과 겹쳐 장기예약 전체가 생성되지 않았습니다.`, conflicts };
+          }
+          addMine(r.created_ids, code);
+          await reload();
+          return { ok: true, data: { code, count: r.created_count } };
+        } catch (e) {
+          return { ok: false, error: live.friendly(e) };
+        }
+      },
+      meetingManage: (id: string, code: string, a: "checkin" | "cancel") => run(() => live.meetingManage(id, code, a)),
+      meetingCancelSeries: (sid: string, code: string) => run(() => live.meetingCancelSeries(sid, code)),
+      meetingFindByCode: (code: string) =>
+        run(async () => {
+          const ids = await live.meetingFindByCode(code);
+          if (ids.length) addMine(ids, code);
+          return ids.length;
+        }),
+      meetingAdminCancel: (id: string) => run(() => live.meetingAdminCancel(id)),
+      meetingAdminCancelSeries: (sid: string) => run(() => live.meetingAdminCancelSeries(sid)),
+      meetingSetRoomActive: (rid: string, a: boolean) => run(() => live.meetingSetRoomActive(rid, a)),
+      sealCreate: (i: SealInput) => run(() => live.sealCreate(i)),
+      sealAct: (id: string, a: SealAction) =>
+        run(() =>
+          live.sealTransition(id, a.type, a.actor, {
+            reason: a.type === "reject" ? a.reason : undefined,
+            sealed_date: a.type === "seal" ? a.sealed_date : undefined,
+            sealed_by: a.type === "seal" ? a.sealed_by : undefined,
+            certificates_issued: a.type === "seal" ? a.certificates_issued : undefined,
+          }),
+        ),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, reload, addMine]);
+
   const value = useMemo<Ctx>(
-    () => ({
-      ...state,
-      ready,
-      role,
-      setRole,
-      notify,
-      resetDemo,
-      gaCreate,
-      gaUpdate,
-      gaRemove,
-      vehicleCreate,
-      vehicleEdit,
-      vehicleSetStatus,
-      vehicleComplete,
-      vehicleRemove,
-      meetingCreate,
-      meetingManage,
-      meetingCancelSeries,
-      meetingFindByCode,
-      meetingAdminCancel,
-      meetingAdminCancelSeries,
-      meetingSetRoomActive,
-      sealCreate,
-      sealAct,
-    }),
-    [state, ready, role, setRole, notify, resetDemo, gaCreate, gaUpdate, gaRemove, vehicleCreate, vehicleEdit, vehicleSetStatus, vehicleComplete, vehicleRemove, meetingCreate, meetingManage, meetingCancelSeries, meetingFindByCode, meetingAdminCancel, meetingAdminCancelSeries, meetingSetRoomActive, sealCreate, sealAct],
+    () => ({ ...state, ready, live: live.LIVE, loadError, reload, role, setRole, notify, resetDemo, ...api }),
+    [state, ready, loadError, reload, role, setRole, notify, resetDemo, api],
   );
 
   return (

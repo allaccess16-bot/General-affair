@@ -239,7 +239,7 @@ function Box({ label, children }: { label: string; children: React.ReactNode }) 
 
 /** 내 요청 수정 — 기존과 동일하게 수정 비밀번호 확인 후 제목·상세·위치만 변경 */
 function GaEditModal({ r, onClose }: { r: GaRequest | null; onClose: () => void }) {
-  const { gaUpdate, notify } = useDemo();
+  const { gaEdit, notify, live } = useDemo();
   const [pw, setPw] = useState("");
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -251,19 +251,20 @@ function GaEditModal({ r, onClose }: { r: GaRequest | null; onClose: () => void 
     setDesc(r.description);
     setLoc(r.location);
   }, [r]);
-  const submit = () => {
+  const submit = async () => {
     if (!r) return;
     if (!pw) return notify("수정 비밀번호를 입력해주세요.", true);
-    if ((r.edit_password || "") !== pw) return notify("비밀번호가 일치하지 않습니다.", true);
     if (!title.trim() || !desc.trim() || !loc.trim()) return notify("제목, 상세 내용, 요청 위치를 모두 입력해주세요.", true);
-    gaUpdate(r.id, { title: title.trim(), description: desc.trim(), location: loc.trim() });
+    // 비밀번호 확인은 저장소(실DB 모드에서는 서버 함수 ga.edit_request)에서 수행
+    const res = await gaEdit(r.id, pw, { title: title.trim(), description: desc.trim(), location: loc.trim() });
+    if (!res.ok) return notify(res.error, true);
     notify("요청 내용이 수정되었습니다.");
     onClose();
   };
   return (
     <Modal open={!!r} onClose={onClose} eyebrow="EDIT" title="내 요청 수정" tone="plain" footer={<Button className="w-full" onClick={submit}>수정 반영</Button>}>
       <div className="space-y-4">
-        <Field label="수정 비밀번호" required hint="데모 데이터의 비밀번호는 1234 입니다.">
+        <Field label="수정 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."}>
           <input type="password" className="input" placeholder="작성 시 입력한 수정 비밀번호" value={pw} onChange={(e) => setPw(e.target.value)} />
         </Field>
         <Field label="요청 제목">
@@ -316,14 +317,14 @@ function GaAdmin() {
           r={r}
           open={open === r.id}
           onToggle={() => setOpen(open === r.id ? null : r.id)}
-          onSave={(p) => {
-            gaUpdate(r.id, p);
-            notify("반영되었습니다.");
+          onSave={async (p) => {
+            const res = await gaUpdate(r.id, p);
+            notify(res.ok ? "반영되었습니다." : res.error, !res.ok);
           }}
-          onDelete={() => {
+          onDelete={async () => {
             if (!confirm("이 업무요청을 삭제할까요? 삭제 후 복구할 수 없습니다.")) return;
-            gaRemove(r.id);
-            notify("삭제되었습니다.");
+            const res = await gaRemove(r.id);
+            notify(res.ok ? "삭제되었습니다." : res.error, !res.ok);
           }}
         />
       ))}

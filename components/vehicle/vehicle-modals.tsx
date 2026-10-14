@@ -68,10 +68,10 @@ export function VehicleFormModal({ open, onClose, initialDate, initialVehicle }:
     validContact(f.contact) &&
     check.state === "ok";
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ok) return notify("필수 항목을 모두 정확히 입력해주세요. 이름은 자음만 입력할 수 없습니다.", true);
-    const r = vehicleCreate(f);
+    const r = await vehicleCreate(f);
     if (!r.ok) return notify(r.error, true);
     notify("차량 배차 신청이 접수되었습니다.");
     onClose();
@@ -159,7 +159,7 @@ export function VehicleFormModal({ open, onClose, initialDate, initialVehicle }:
 
 /** 차량 예약 수정 — 승인 전(신청) 건만, 예약 비밀번호 확인 */
 export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null; onClose: () => void }) {
-  const { vehicleEdit, notify } = useDemo();
+  const { vehicleEdit, notify, live } = useDemo();
   const [f, setF] = useState<VehicleInput>(emptyInput());
   const [pw, setPw] = useState("");
   useEffect(() => {
@@ -182,12 +182,12 @@ export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null;
   }, [c]);
   const set = <K extends keyof VehicleInput>(k: K, v: VehicleInput[K]) => setF((p) => ({ ...p, [k]: v }));
   const check = useScheduleCheck(f, c?.id);
-  const submit = () => {
+  const submit = async () => {
     if (!c) return;
     if (!f.purpose.trim() || !f.destination.trim() || !f.driver.trim() || !f.contact.trim()) return notify("모든 항목을 입력해주세요.", true);
     const { reservation_password: _omit, ...patch } = f;
     void _omit;
-    const r = vehicleEdit(c.id, pw, patch);
+    const r = await vehicleEdit(c.id, pw, patch);
     if (!r.ok) return notify(r.error, true);
     notify("차량 예약 신청 내용이 수정되었습니다.");
     onClose();
@@ -229,7 +229,7 @@ export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null;
         <Field label="연락처/내선">
           <input className="input" value={f.contact} onChange={(e) => set("contact", e.target.value)} />
         </Field>
-        <Field label="예약 시 입력한 비밀번호" required hint="데모 데이터의 비밀번호는 1234 입니다." className="sm:col-span-2">
+        <Field label="예약 시 입력한 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."} className="sm:col-span-2">
           <input type="password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
         </Field>
       </div>
@@ -239,7 +239,7 @@ export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null;
 
 /** 운행 완료 기록 — 차량 사용자가 승인 건에 대해 직접 작성 */
 export function VehicleCompleteModal({ c, onClose }: { c: VehicleReservation | null; onClose: () => void }) {
-  const { vehicleComplete, notify } = useDemo();
+  const { vehicleComplete, notify, live } = useDemo();
   const [f, setF] = useState<CompletionInput>({});
   const [pw, setPw] = useState("");
   useEffect(() => {
@@ -259,11 +259,11 @@ export function VehicleCompleteModal({ c, onClose }: { c: VehicleReservation | n
   const set = <K extends keyof CompletionInput>(k: K, v: CompletionInput[K]) => setF((p) => ({ ...p, [k]: v }));
   const dist = Math.max(0, Number(f.odometer_after || 0) - Number(f.odometer_before || 0));
   const num = (v: string) => (v === "" ? null : Number(v));
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!c) return;
     if (!f.complete_department || !f.complete_name || f.odometer_before == null || f.odometer_after == null || !pw) return notify("필수 항목을 모두 입력해주세요.", true);
-    const r = vehicleComplete(c.id, pw, { ...f, fuel_cost: Number(f.fuel_cost || 0), parking_cost: Number(f.parking_cost || 0), etc_cost: Number(f.etc_cost || 0) });
+    const r = await vehicleComplete(c.id, pw, { ...f, fuel_cost: Number(f.fuel_cost || 0), parking_cost: Number(f.parking_cost || 0), etc_cost: Number(f.etc_cost || 0) });
     if (!r.ok) return notify(r.error, true);
     notify("운행기록이 저장되었습니다.");
     onClose();
@@ -320,7 +320,7 @@ export function VehicleCompleteModal({ c, onClose }: { c: VehicleReservation | n
           <Field label="비고" className="sm:col-span-2">
             <textarea className="input h-20 py-3" value={f.complete_memo ?? ""} onChange={(e) => set("complete_memo", e.target.value)} />
           </Field>
-          <Field label="예약 시 입력한 비밀번호" required hint="데모 데이터의 비밀번호는 1234 입니다." className="sm:col-span-2">
+          <Field label="예약 시 입력한 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."} className="sm:col-span-2">
             <input type="password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
           </Field>
         </form>
