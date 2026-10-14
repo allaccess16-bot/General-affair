@@ -70,19 +70,6 @@ export const NOTICES: Notice[] = [
   { id: "n5", title: "4분기 사무용품 일괄 신청 기간 안내 (10/20–10/31)", date: "2026-10-05", tag: "안내" },
 ];
 
-export const FAQS = [
-  { q: "회의실 반복 예약은 어떻게 하나요?", a: "예약 화면에서 '반복' 옵션을 켜고 주기(매주·격주·매월)와 종료일을 지정하면, 겹치는 일정이 있는 날짜를 먼저 알려드립니다." },
-  { q: "인장 날인 신청 후 승인까지 얼마나 걸리나요?", a: "인장 종류별 승인 단계에 따라 다르며 보통 1영업일 이내입니다. 진행 단계는 '나의 신청'에서 실시간으로 확인할 수 있습니다." },
-  { q: "차량 예약을 취소하면 다른 사람에게 바로 공개되나요?", a: "네. 취소 즉시 해당 시간대가 '이용 가능'으로 바뀌어 다른 직원이 예약할 수 있습니다." },
-  { q: "승인 완료와 날인 완료는 무엇이 다른가요?", a: "승인 완료는 결재가 끝난 상태이고, 날인 완료는 인장 관리자가 실제 날인을 마치고 사용대장에 기록한 상태입니다." },
-];
-
-export const GUIDES = [
-  { title: "처음 사용하는 직원을 위한 5분 가이드", meta: "PDF · 12쪽" },
-  { title: "인장 날인 신청서 작성 방법", meta: "영상 · 3분" },
-  { title: "회의실 반복·장기 예약 활용법", meta: "가이드 · 6단계" },
-];
-
 export type Notification = { id: string; module: ModuleKey; text: string; time: string; unread: boolean };
 
 export const NOTIFICATIONS: Notification[] = [

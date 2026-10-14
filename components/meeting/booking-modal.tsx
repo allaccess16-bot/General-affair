@@ -111,7 +111,7 @@ export function BookingModal({ open, preset, onClose }: { open: boolean; preset?
       return notify(r.error, true);
     }
     setResult(r.data!);
-    notify(mode === "single" ? `예약 완료 · 예약코드 ${r.data!.code}` : `반복예약 ${r.data!.count}회 전체 완료 · 코드 ${r.data!.code}`);
+    notify(mode === "single" ? `예약 완료 · 예약코드 ${r.data!.code}` : `장기예약 1건 등록 (총 ${r.data!.count}회) · 코드 ${r.data!.code}`);
   };
 
   const selectedRoom = rooms.find((r) => r.id === roomId);
@@ -145,7 +145,7 @@ export function BookingModal({ open, preset, onClose }: { open: boolean; preset?
             <CheckCircle2 className="size-9" />
           </span>
           <p className="mt-5 text-lg font-bold">
-            {selectedRoom?.name} · {result.count > 1 ? `반복 ${result.count}회` : `${date} ${start}–${end}`}
+            {selectedRoom?.name} · {result.count > 1 ? `장기예약 1건 · 총 ${result.count}회` : `${date} ${start}–${end}`}
           </p>
           <p className="mt-4 text-sm text-ink-3">예약코드 (입실확인·예약취소에 사용)</p>
           <button

@@ -152,6 +152,8 @@ begin
     from legacy_import.meeting_rooms lr
    where lr.id = m.id;
   drop table if exists _room_active;
+  -- 0011 적용 DB: 반복예약 원장(meeting.series) 정리
+  if to_regprocedure('meeting.sync_series()') is not null then perform meeting.sync_series(); end if;
   source := 'meeting.reservations'; imported := ok; skipped_existing := ex; rejected := rj; return next;
 end;
 $$;

@@ -14,6 +14,7 @@ import {
   PlayCircle,
   Pin,
   Repeat,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -22,7 +23,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { FAQS, GUIDES, NOTICES, type Notice } from "@/lib/data";
+import { NOTICES, type Notice } from "@/lib/data";
+import { FAQ_CATEGORIES, FAQS, GUIDES, type FaqCategory, type Guide } from "@/lib/help";
+import { GuideModal } from "./guide-modal";
 import { cn } from "@/lib/utils";
 
 const TAG_STYLE: Record<Notice["tag"], string> = {
@@ -43,6 +46,10 @@ const SHORTCUTS: { label: string; href: string; icon: LucideIcon; color: string 
 
 export function InfoHub() {
   const [openFaq, setOpenFaq] = useState(0);
+  const [guide, setGuide] = useState<Guide | null>(null);
+  const [cat, setCat] = useState<FaqCategory | "전체">("전체");
+  const [fq, setFq] = useState("");
+  const faqs = FAQS.filter((f) => (cat === "전체" || f.cat === cat) && (!fq.trim() || `${f.q} ${f.a}`.includes(fq.trim())));
   return (
     <section className="mx-auto max-w-[1320px] px-4 py-16 md:px-8 md:py-20">
       <SectionHeading eyebrow="HELP CENTER" title="공지사항과 이용 가이드" align="center" description="필요한 정보를 빠르게 찾고, 자주 쓰는 메뉴로 바로 이동하세요." />
@@ -111,13 +118,19 @@ export function InfoHub() {
             <ul className="mt-6 space-y-2">
               {GUIDES.map((g) => (
                 <li key={g.title}>
-                  <button className="flex w-full items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 text-left transition hover:bg-white/20">
+                  <motion.button
+                    whileHover={{ x: 4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setGuide(g)}
+                    className="group flex w-full items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 text-left transition-colors hover:bg-white/20"
+                  >
                     <PlayCircle className="size-5 shrink-0 text-brand-100" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{g.title}</span>
                       <span className="block text-xs text-brand-100/80">{g.meta}</span>
                     </span>
-                  </button>
+                    <span className="text-xs font-bold text-white/70 transition group-hover:text-white">보기</span>
+                  </motion.button>
                 </li>
               ))}
             </ul>
@@ -134,11 +147,30 @@ export function InfoHub() {
               }
               className="mb-3"
             />
-            <ul className="space-y-2">
-              {FAQS.map((f, i) => {
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-1 overflow-x-auto scrollbar-none">
+                {(["전체", ...FAQ_CATEGORIES] as const).map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => (setCat(c), setOpenFaq(-1))}
+                    className={cn("relative shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition-colors", cat === c ? "text-white" : "text-ink-2 hover:bg-canvas")}
+                  >
+                    {cat === c && <motion.span layoutId="faq-cat" className="absolute inset-0 rounded-full bg-brand-600" transition={{ type: "spring", damping: 30, stiffness: 400 }} />}
+                    <span className="relative">{c}</span>
+                  </button>
+                ))}
+              </div>
+              <label className="relative block sm:w-56">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-3" />
+                <input className="input h-9 pl-9 text-sm" placeholder="궁금한 내용 검색" value={fq} onChange={(e) => (setFq(e.target.value), setOpenFaq(-1))} />
+              </label>
+            </div>
+            {faqs.length === 0 && <p className="rounded-2xl bg-canvas px-4 py-8 text-center text-sm text-ink-3">검색 결과가 없습니다. 경영지원부로 문의해주세요.</p>}
+            <motion.ul layout className="space-y-2">
+              {faqs.map((f, i) => {
                 const open = openFaq === i;
                 return (
-                  <li key={f.q} className={cn("rounded-2xl border transition", open ? "border-brand-200 bg-brand-50/50" : "border-line")}>
+                  <motion.li layout key={f.q} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: i * 0.03 }} className={cn("rounded-2xl border transition-colors", open ? "border-brand-200 bg-brand-50/50" : "border-line")}>
                     <button
                       className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
                       aria-expanded={open}
@@ -146,22 +178,27 @@ export function InfoHub() {
                     >
                       <span className="grid size-6 shrink-0 place-items-center rounded-full bg-brand-600 text-xs font-bold text-white">Q</span>
                       <span className="flex-1 text-[15px] font-semibold">{f.q}</span>
+                      <span className="hidden shrink-0 rounded-full bg-canvas px-2 py-0.5 text-[11px] font-bold text-ink-3 sm:inline">{f.cat}</span>
                       <ChevronDown className={cn("size-4 text-ink-3 transition-transform", open && "rotate-180")} />
                     </button>
                     <AnimatePresence initial={false}>
                       {open && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                          <p className="px-4 pb-4 pl-[52px] text-sm leading-relaxed text-ink-2">{f.a}</p>
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
+                          <motion.p initial={{ y: -6 }} animate={{ y: 0 }} className="flex gap-3 px-4 pb-4 text-sm leading-relaxed text-ink-2">
+                            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-white text-xs font-bold text-brand-700 ring-1 ring-brand-200">A</span>
+                            <span>{f.a}</span>
+                          </motion.p>
                         </motion.div>
                       )}
                     </AnimatePresence>
-                  </li>
+                  </motion.li>
                 );
               })}
-            </ul>
+            </motion.ul>
           </Card>
         </Reveal>
       </div>
+      <GuideModal guide={guide} onClose={() => setGuide(null)} />
     </section>
   );
 }

@@ -13,7 +13,7 @@ import { CountUp } from "@/components/ui/count-up";
 import { Empty, Notice, Pill, Tabs } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { Reveal, Stagger, staggerItem } from "@/components/ui/reveal";
-import { fmtDate, fmtTime, isActive, isoDow, MEETING_CONFIG, roomColor, STATUS_TEXT, type MeetingReservation, type MeetingStatus, type Room } from "@/lib/meeting";
+import { fmtDate, fmtTime, isActive, isoDow, MEETING_CONFIG, roomColor, seoulParts, STATUS_TEXT, type MeetingReservation, type MeetingStatus, type Room } from "@/lib/meeting";
 import { todayStr } from "@/lib/shared";
 import { cn } from "@/lib/utils";
 import { BookingModal, type BookingPreset } from "./booking-modal";
@@ -501,6 +501,7 @@ function Admin() {
           </ul>
         </Card>
       </div>
+      <SeriesAdmin rooms={rooms} now={now} />
       <div className="grid gap-5 lg:grid-cols-2">
         {[
           ["최근 30일 회의실 이용량", byRoom],
@@ -527,6 +528,106 @@ function Admin() {
         ))}
       </div>
     </div>
+  );
+}
+
+/* 장기(반복)예약 — 회차가 아니라 장기예약 1건 단위로 관리 */
+const DOW = ["", "월", "화", "수", "목", "금", "토", "일"];
+type SeriesRow = { id: string; first: MeetingReservation; items: MeetingReservation[]; upcoming: number; completed: number; cancelled: number; next?: MeetingReservation; status: "진행중" | "종료" | "취소" };
+
+function SeriesAdmin({ rooms, now }: { rooms: Room[]; now: number }) {
+  const { meeting, meetingAdminCancelSeries, notify } = useDemo();
+  const [tab, setTab] = useState<"진행중" | "지난 예약">("진행중");
+  const [q, setQ] = useState("");
+  const [show, setShow] = useState(8);
+  const all = useMemo(() => {
+    const map = new Map<string, MeetingReservation[]>();
+    meeting.forEach((r) => r.series_id && map.set(r.series_id, [...(map.get(r.series_id) ?? []), r]));
+    const rows: SeriesRow[] = [];
+    map.forEach((items, id) => {
+      items.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at));
+      const live = items.filter((r) => isActive(r) && +new Date(r.end_at) > now);
+      const completed = items.filter((r) => r.status === "completed").length;
+      const cancelled = items.filter((r) => r.status === "cancelled" || r.status === "no_show").length;
+      rows.push({ id, first: items[0], items, upcoming: live.length, completed, cancelled, next: live[0], status: live.length ? "진행중" : completed ? "종료" : "취소" });
+    });
+    return rows.sort((a, b) => (a.next && b.next ? +new Date(a.next.start_at) - +new Date(b.next.start_at) : +new Date(b.items[b.items.length - 1].start_at) - +new Date(a.items[a.items.length - 1].start_at)));
+  }, [meeting, now]);
+  const list = all.filter((r) => (tab === "진행중" ? r.status === "진행중" : r.status !== "진행중") && (!q.trim() || `${r.first.title} ${r.first.organizer_name} ${r.first.department}`.includes(q.trim())));
+  const dows = (items: MeetingReservation[]) => [...new Set(items.map((r) => isoDow(seoulParts(r.start_at).date)))].sort((x, y) => x - y).map((d) => DOW[d]).join("·");
+
+  return (
+    <Card className="p-5 md:p-6">
+      <CardHeader
+        title="장기 · 반복예약 관리"
+        description={`장기예약 1건 단위로 표시합니다 · 진행중 ${all.filter((r) => r.status === "진행중").length}건`}
+        className="mb-4"
+        action={
+          <div className="flex gap-1 rounded-full bg-canvas p-1">
+            {(["진행중", "지난 예약"] as const).map((t) => (
+              <button key={t} onClick={() => (setTab(t), setShow(8))} className={cn("relative z-10 rounded-full px-3 py-1.5 text-xs font-bold transition-colors", tab === t ? "text-white" : "text-ink-2")}>
+                {tab === t && <motion.span layoutId="series-tab" className="absolute inset-0 -z-10 rounded-full bg-ink" />}
+                {t}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <input className="input mb-3 h-10 text-sm" placeholder="제목 · 예약자 · 부서 검색" value={q} onChange={(e) => (setQ(e.target.value), setShow(8))} />
+      {list.length === 0 && <Empty>{tab === "진행중" ? "진행 중인 장기예약이 없습니다." : "지난 장기예약이 없습니다."}</Empty>}
+      <ul className="grid gap-2.5 lg:grid-cols-2">
+        {list.slice(0, show).map((s) => {
+          const room = rooms.find((x) => x.id === s.first.room_id);
+          const total = s.items.length;
+          const done = s.completed + s.cancelled;
+          return (
+            <motion.li key={s.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-line p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm font-bold">
+                    <i className="size-2.5 shrink-0 rounded-full" style={{ background: roomColor(s.first.room_id) }} />
+                    <span className="truncate">{s.first.title}</span>
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-ink-3">
+                    {room?.name ?? s.first.room_id} · {s.first.department} {s.first.organizer_name} · {s.first.attendee_count}명
+                  </p>
+                </div>
+                <Pill className={s.status === "진행중" ? "bg-violet-50 text-violet-700" : s.status === "종료" ? "bg-brand-50 text-brand-700" : "bg-zinc-100 text-zinc-500"}>{s.status}</Pill>
+              </div>
+              <p className="mt-2 text-xs font-semibold text-ink-2 tabular">
+                {fmtDate(s.items[0].start_at)} ~ {fmtDate(s.items[total - 1].start_at)} · 매주 {dows(s.items)} · {fmtTime(s.first.start_at)}–{fmtTime(s.first.end_at)}
+              </p>
+              <div className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-canvas" title={`완료 ${s.completed} · 취소 ${s.cancelled} · 남은 ${s.upcoming}`}>
+                <span className="bg-brand-500" style={{ width: `${(s.completed / total) * 100}%` }} />
+                <span className="bg-zinc-300" style={{ width: `${(s.cancelled / total) * 100}%` }} />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-ink-3">
+                <span className="tabular">
+                  총 {total}회 · 진행 {done}/{total} {s.next && <>· 다음 {fmtDate(s.next.start_at)}</>}
+                </span>
+                {s.status === "진행중" && (
+                  <button
+                    className="font-bold text-rose-600 hover:underline"
+                    onClick={async () => {
+                      if (!confirm(`'${s.first.title}' 장기예약의 남은 ${s.upcoming}회를 모두 취소할까요?`)) return;
+                      const res = await meetingAdminCancelSeries(s.id);
+                      notify(res.ok ? "장기예약의 남은 일정을 모두 취소했습니다." : res.error, !res.ok);
+                    }}
+                  >
+                    남은 일정 전체 취소
+                  </button>
+                )}
+              </div>
+            </motion.li>
+          );
+        })}
+      </ul>
+      {list.length > show && (
+        <Button variant="ghost" className="mt-3 w-full" onClick={() => setShow((v) => v + 8)}>
+          더 보기 ({list.length - show}건)
+        </Button>
+      )}
+    </Card>
   );
 }
 

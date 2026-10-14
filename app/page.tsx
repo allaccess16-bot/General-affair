@@ -1,5 +1,4 @@
 import { ActivitySection } from "@/components/home/activity-section";
-import { AdminInsight } from "@/components/home/admin-insight";
 import { Hero } from "@/components/home/hero";
 import { InfoHub } from "@/components/home/info-hub";
 import { KpiSection } from "@/components/home/kpi-section";
@@ -15,7 +14,6 @@ export default function HomePage() {
       <KpiSection />
       <ActivitySection />
       <ProcessBand />
-      <AdminInsight />
       <OpsStats />
       <InfoHub />
     </>

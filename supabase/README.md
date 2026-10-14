@@ -12,6 +12,7 @@
 | `migrations/20261014000008_api_access.sql` | 화면(REST API) 접근 권한, 예약코드 조회·관리자 취소·차량 수정/운행완료·총무 수정 함수 |
 | `migrations/20261014000009_ga_desired_date.sql` | 총무 요청 희망 처리일(desired_date) 컬럼 — 기존 데이터 보존용 |
 | `migrations/20261014000010_auth_rbac.sql` | 직원 로그인·관리자 권한: core.profiles(가입 승인), 모듈별 관리자, 전 테이블 RLS, 비밀번호 컬럼 읽기 차단, 비로그인 차단 |
+| `migrations/20261014000011_meeting_series.sql` | 회의실 장기예약 원장(meeting.series): 장기예약 1건 = 1행, 회차는 중복차단용으로 내부 유지, 진행 현황 뷰 |
 | `db-tests/local_api_roles.sql` | 로컬 PostgreSQL에서 Supabase API 역할을 흉내내는 테스트 준비 (Supabase에서는 실행 금지) |
 | `import/legacy_import.sql` | 기존 3개 시스템 CSV → 새 DB 이관 (멱등, 제외 건 사유 기록, 건수 검증 뷰) |
 | `db-tests/run_tests.sql` | 제약·함수 검증 36개 |

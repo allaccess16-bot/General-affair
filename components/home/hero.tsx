@@ -63,7 +63,7 @@ export function Hero() {
 
           <motion.div {...fadeUp(0.4)} className="mt-9 flex flex-wrap gap-3">
             <button onClick={() => openRequest()} className={buttonClass("primary", "lg", "group btn-sheen")}>
-              업무 시작하기
+              업무지원 요청하기
               <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
             </button>
             <Link href="/admin" className={buttonClass("secondary", "lg")}>
