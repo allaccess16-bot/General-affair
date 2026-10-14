@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, MapPin, Search, Users } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AdminGate } from "@/components/modules/admin-gate";
@@ -173,6 +173,7 @@ function WeekView({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; o
           {rooms.map((r) => (
             <button
               key={r.id}
+              title={`${r.name} · ${r.capacity}인 · ${r.location}`}
               onClick={() => setRoomId(r.id)}
               className={cn("flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-bold transition", r.id === room.id ? "border-ink bg-ink text-white" : "border-line bg-white text-ink-2")}
             >
@@ -183,6 +184,12 @@ function WeekView({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; o
         </div>
         <input type="date" className="input w-40" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="시작 날짜" />
       </Card>
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm text-ink-2">
+        <b className="text-ink">{room.name}</b>
+        <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" /> {room.location}</span>
+        <span className="inline-flex items-center gap-1"><Users className="size-3.5" /> 최대 {room.capacity}인 · {room.floor}층</span>
+        {!room.active && <span className="font-bold text-zinc-500">운영 중지</span>}
+      </p>
       <WeekAvailability room={room} from={date} idx={idx} onFree={(d, s, e) => onBook({ roomId: room.id, date: d, start: s, end: e })} onBusy={onDetail} />
     </div>
   );
