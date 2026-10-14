@@ -1,0 +1,683 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { ChevronDown, ChevronLeft, ChevronRight, Clock3, DoorOpen, Repeat, Search, Users } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { AdminGate } from "@/components/modules/admin-gate";
+import { ModuleHero } from "@/components/modules/module-hero";
+import { useDemo } from "@/components/providers/demo-store";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/card";
+import { CountUp } from "@/components/ui/count-up";
+import { Empty, Notice, Pill, Tabs } from "@/components/ui/form";
+import { Modal } from "@/components/ui/modal";
+import { Reveal, Stagger, staggerItem } from "@/components/ui/reveal";
+import { fmtDate, fmtTime, isActive, isoDow, MEETING_CONFIG, roomColor, STATUS_TEXT, type MeetingReservation, type MeetingStatus, type Room } from "@/lib/meeting";
+import { addDays, todayStr } from "@/lib/shared";
+import { cn } from "@/lib/utils";
+import { BookingModal, type BookingPreset } from "./booking-modal";
+import { DayGrid, DayTimeline, MonthCalendar, useIndexed, WeekAvailability, type Indexed } from "./schedule";
+
+type Tab = "dashboard" | "schedule" | "mine" | "admin" | "guide";
+type Floor = "all" | 12 | 13;
+
+const STATUS_STYLE: Record<MeetingStatus, string> = {
+  reserved: "bg-brand-50 text-brand-700",
+  checked_in: "bg-sky-50 text-sky-700",
+  completed: "bg-zinc-100 text-zinc-600",
+  cancelled: "bg-zinc-100 text-zinc-500",
+  no_show: "bg-rose-50 text-rose-700",
+};
+
+function useNow(ms = 30000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+  return now;
+}
+
+export function MeetingApp() {
+  const { ready, role, rooms } = useDemo();
+  const params = useSearchParams();
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const [booking, setBooking] = useState<{ open: boolean; preset?: BookingPreset }>({ open: false });
+  const [detail, setDetail] = useState<MeetingReservation | null>(null);
+
+  useEffect(() => {
+    if (params.get("new")) setBooking({ open: true });
+  }, [params]);
+
+  const openBooking = (preset?: BookingPreset) => setBooking({ open: true, preset });
+
+  return (
+    <div>
+      <ModuleHero
+        moduleKey="meeting"
+        onPrimary={() => openBooking()}
+        secondary={{ label: "통합 예약 현황", href: "#work" }}
+        meta={
+          ready && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Pill className="bg-white text-ink-2 ring-1 ring-line">12층·13층 {rooms.length}개 회의실</Pill>
+              <Pill className="bg-white text-ink-2 ring-1 ring-line">30분 단위 · {MEETING_CONFIG.businessStart}–{MEETING_CONFIG.businessEnd}</Pill>
+              <Pill className="bg-amber-50 text-amber-800">단일 예약 10분 내 입실확인</Pill>
+            </div>
+          )
+        }
+      />
+      <div id="work" className="mx-auto max-w-[1320px] scroll-mt-24 space-y-6 px-4 md:px-8">
+        <Tabs<Tab>
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: "dashboard", label: "대시보드" },
+            { value: "schedule", label: "예약 현황" },
+            { value: "mine", label: "내 예약" },
+            { value: "admin", label: "관리자", locked: role !== "admin" },
+            { value: "guide", label: "이용 안내" },
+          ]}
+          className="w-fit max-w-full"
+        />
+        {!ready ? (
+          <div className="h-80 animate-pulse rounded-3xl bg-white" />
+        ) : (
+          <>
+            {tab === "dashboard" && <Dashboard onBook={openBooking} onDetail={setDetail} />}
+            {tab === "schedule" && <Schedule onBook={openBooking} onDetail={setDetail} />}
+            {tab === "mine" && <Mine />}
+            {tab === "admin" && (
+              <AdminGate>
+                <Admin />
+              </AdminGate>
+            )}
+            {tab === "guide" && <Guide />}
+          </>
+        )}
+      </div>
+      <BookingModal open={booking.open} preset={booking.preset} onClose={() => setBooking({ open: false })} />
+      <DetailModal r={detail} rooms={rooms} onClose={() => setDetail(null)} />
+    </div>
+  );
+}
+
+function FloorChips({ value, onChange }: { value: Floor; onChange: (f: Floor) => void }) {
+  return (
+    <div className="flex gap-1">
+      {(["all", 12, 13] as Floor[]).map((f) => (
+        <button key={String(f)} onClick={() => onChange(f)} className={cn("rounded-full px-3.5 py-2 text-sm font-bold", value === f ? "bg-ink text-white" : "bg-white text-ink-2 ring-1 ring-line")}>
+          {f === "all" ? "전체" : `${f}F`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------- 대시보드 ---------------- */
+function Dashboard({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
+  const { meeting, rooms } = useDemo();
+  const now = useNow();
+  const [floor, setFloor] = useState<Floor>("all");
+  const [date, setDate] = useState(todayStr());
+  const idx = useIndexed(meeting);
+  const today = todayStr();
+  const todays = idx.byDate.get(today) ?? [];
+  const busyNow = new Set(todays.filter((r) => isActive(r) && new Date(r.start_at).getTime() <= now && new Date(r.end_at).getTime() > now).map((r) => r.room_id));
+  const stats = [
+    { label: "지금 이용 가능", value: rooms.filter((r) => r.active && !busyNow.has(r.id)).length, sub: "전체 회의실 기준", icon: DoorOpen },
+    { label: "현재 사용 중", value: busyNow.size, sub: "현재 예약 점유 기준", icon: Users },
+    { label: "오늘 남은 예약", value: todays.filter((r) => isActive(r) && new Date(r.start_at).getTime() > now).length, sub: "현재 시각 이후", icon: Clock3 },
+    { label: "오늘 자동취소", value: todays.filter((r) => r.status === "no_show").length, sub: "10분 미입실", icon: Repeat },
+  ];
+  const list = rooms.filter((r) => floor === "all" || r.floor === floor);
+
+  return (
+    <div className="space-y-6">
+      <Stagger className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {stats.map((s) => (
+          <motion.div key={s.label} variants={staggerItem} className="rounded-3xl border border-line bg-white p-5 shadow-card">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-ink-2">{s.label}</p>
+              <s.icon className="size-5 text-[color:var(--color-mod-meeting)]" />
+            </div>
+            <p className="mt-2 text-3xl font-extrabold">
+              <CountUp value={s.value} />
+            </p>
+            <p className="text-xs text-ink-3">{s.sub}</p>
+          </motion.div>
+        ))}
+      </Stagger>
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h3 className="text-xl font-bold">회의실 현황</h3>
+          <p className="text-sm text-ink-3">선택한 날짜의 예약과 현재 상태를 확인합니다.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <FloorChips value={floor} onChange={setFloor} />
+          <input type="date" className="input w-44" value={date} onChange={(e) => setDate(e.target.value)} aria-label="날짜" />
+        </div>
+      </div>
+      <Stagger className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {list.map((room) => {
+          const rs = idx.active(room.id, date).slice().sort((a, b) => a.__s - b.__s);
+          const isToday = date === today;
+          const current = isToday ? rs.find((r) => new Date(r.start_at).getTime() <= now && new Date(r.end_at).getTime() > now) : undefined;
+          const next = rs.find((r) => new Date(r.start_at).getTime() > now || !isToday);
+          let label = "예약 가능";
+          let cls = "bg-brand-50 text-brand-700";
+          if (!room.active) (label = "운영 중지"), (cls = "bg-zinc-100 text-zinc-500");
+          else if (current) (label = "사용 중"), (cls = "bg-rose-50 text-rose-700");
+          else if (next && isToday && new Date(next.start_at).getTime() - now < 3600000) (label = "곧 예약"), (cls = "bg-amber-50 text-amber-800");
+          const color = roomColor(room.id);
+          return (
+            <motion.article key={room.id} variants={staggerItem} whileHover={{ y: -4 }} className="flex flex-col rounded-3xl border bg-white p-5 shadow-card transition-shadow hover:shadow-lift" style={{ borderColor: `${color}33` }}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-ink-3">
+                    <i className="size-2.5 rounded-full" style={{ background: color }} /> {room.floor}F · ROOM
+                  </p>
+                  <h4 className="mt-1 text-lg font-bold">{room.name}</h4>
+                </div>
+                <Pill className={cls}>{label}</Pill>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-canvas px-3 py-2">
+                  <p className="text-ink-3">최대 인원</p>
+                  <p className="font-bold">{room.capacity}명</p>
+                </div>
+                <div className="rounded-xl bg-canvas px-3 py-2">
+                  <p className="text-ink-3">위치</p>
+                  <p className="truncate font-bold">{room.location}</p>
+                </div>
+              </div>
+              <button
+                className="mt-3 flex-1 rounded-xl px-3 py-2.5 text-left text-xs leading-relaxed"
+                style={{ background: `${color}12` }}
+                onClick={() => (current ?? next) && onDetail((current ?? next)!)}
+              >
+                {!room.active
+                  ? "관리자에 의해 신규 예약이 중지된 회의실입니다."
+                  : current
+                    ? `${fmtTime(current.start_at)}–${fmtTime(current.end_at)} · ${current.department} / ${current.title}`
+                    : next
+                      ? `다음 예약 ${fmtTime(next.start_at)}–${fmtTime(next.end_at)} · ${next.department} / ${next.organizer_name} · ${next.title}${next.series_id ? " · 반복" : ""}`
+                      : "선택한 날짜에 예정된 예약이 없습니다."}
+              </button>
+              <div className="mt-3 flex gap-[2px]">
+                {Array.from({ length: 24 }, (_, i) => {
+                  const s = 480 + i * 30;
+                  const busy = rs.some((r) => r.__s < s + 30 && r.__e > s);
+                  return <i key={i} className="h-1.5 flex-1 rounded-full" style={{ background: busy ? color : "var(--color-line)" }} />;
+                })}
+              </div>
+              <Button size="sm" variant="secondary" className="mt-4" disabled={!room.active} onClick={() => onBook({ roomId: room.id, date })}>
+                이 회의실 예약
+              </Button>
+            </motion.article>
+          );
+        })}
+      </Stagger>
+    </div>
+  );
+}
+
+/* ---------------- 예약 현황 ---------------- */
+function Schedule({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
+  const { meeting, rooms } = useDemo();
+  const [view, setView] = useState<"overview" | "day" | "availability">("overview");
+  const [floor, setFloor] = useState<Floor>("all");
+  const [date, setDate] = useState(todayStr());
+  const [roomId, setRoomId] = useState(rooms[0]?.id ?? "");
+  const idx = useIndexed(meeting);
+  const list = rooms.filter((r) => floor === "all" || r.floor === floor);
+  const room = rooms.find((r) => r.id === roomId) ?? list[0];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex gap-1 overflow-x-auto rounded-2xl bg-canvas p-1 scrollbar-none">
+          {(
+            [
+              ["overview", "월간 캘린더"],
+              ["day", "날짜별 예약"],
+              ["availability", "회의실 7일 보기"],
+            ] as const
+          ).map(([v, l]) => (
+            <button key={v} onClick={() => setView(v)} className={cn("shrink-0 rounded-xl px-4 py-2 text-sm font-bold", view === v ? "bg-white text-ink shadow-card" : "text-ink-3")}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FloorChips value={floor} onChange={setFloor} />
+          <div className="flex items-center gap-1">
+            <button className="grid size-10 place-items-center rounded-full border border-line bg-white" onClick={() => setDate(addDays(date, -1))} aria-label="이전 날짜">
+              <ChevronLeft className="size-4" />
+            </button>
+            <input type="date" className="input w-40" value={date} onChange={(e) => setDate(e.target.value)} aria-label="날짜" />
+            <button className="grid size-10 place-items-center rounded-full border border-line bg-white" onClick={() => setDate(addDays(date, 1))} aria-label="다음 날짜">
+              <ChevronRight className="size-4" />
+            </button>
+            <Button size="sm" variant="secondary" className="h-10" onClick={() => setDate(todayStr())}>
+              오늘
+            </Button>
+          </div>
+          <Button size="sm" className="h-10" onClick={() => onBook({ date })}>
+            + 예약
+          </Button>
+        </div>
+      </div>
+      {view === "overview" && (
+        <>
+          <MonthCalendar selected={date} onSelect={setDate} rooms={list} idx={idx} />
+          <DayGrid date={date} rooms={list} idx={idx} onFree={(rid, s, e) => onBook({ roomId: rid, date, start: s, end: e })} onBusy={onDetail} />
+        </>
+      )}
+      {view === "day" && <DayTimeline date={date} rooms={list} idx={idx} onBusy={onDetail} />}
+      {view === "availability" && room && (
+        <>
+          <Card className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
+            <span className="text-sm font-bold">빈 시간을 확인할 회의실</span>
+            <select className="input sm:w-72" value={room.id} onChange={(e) => setRoomId(e.target.value)}>
+              {list.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.floor}F · {r.name} · {r.capacity}인
+                </option>
+              ))}
+            </select>
+          </Card>
+          <WeekAvailability room={room} from={date} idx={idx} onFree={(d, s, e) => onBook({ roomId: room.id, date: d, start: s, end: e })} onBusy={onDetail} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function DetailModal({ r, rooms, onClose }: { r: MeetingReservation | null; rooms: Room[]; onClose: () => void }) {
+  const room = r ? rooms.find((x) => x.id === r.room_id) : undefined;
+  return (
+    <Modal open={!!r} onClose={onClose} eyebrow="RESERVATION DETAIL" title="예약 상세" description="예약 현황판에서 선택한 일정입니다." tone="plain">
+      {r && (
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          {[
+            ["회의실", `${room?.floor}F · ${room?.name}`],
+            ["상태", STATUS_TEXT[r.status]],
+            ["예약일시", `${fmtDate(r.start_at)} ${fmtTime(r.start_at)}–${fmtTime(r.end_at)}`],
+            ["유형", r.series_id ? `반복예약 (${r.recurrence_label?.replaceAll("-", ".")})` : "단일 예약"],
+            ["부서", r.department],
+            ["예약자", r.organizer_name],
+            ["회의 제목", r.title],
+            ["참석인원", `${r.attendee_count}명`],
+          ].map(([k, v]) => (
+            <div key={k} className={cn("rounded-2xl bg-canvas p-3", (k === "예약일시" || k === "유형") && "col-span-2")}>
+              <p className="text-xs text-ink-3">{k}</p>
+              <p className="mt-0.5 font-bold">{v}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ---------------- 내 예약 ---------------- */
+function Mine() {
+  const { meeting, myMeeting, rooms, meetingManage, meetingCancelSeries, meetingFindByCode, notify } = useDemo();
+  const now = useNow(15000);
+  const [code, setCode] = useState("");
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const codeMap = useMemo(() => new Map(myMeeting.map((m) => [m.id, m.code])), [myMeeting]);
+  const items = meeting.filter((r) => codeMap.has(r.id));
+
+  const groups = useMemo(() => {
+    const singles: { type: "single"; at: number; item: MeetingReservation }[] = [];
+    const series = new Map<string, MeetingReservation[]>();
+    items.forEach((r) => {
+      if (!r.series_id) singles.push({ type: "single", at: new Date(r.start_at).getTime(), item: r });
+      else series.set(r.series_id, [...(series.get(r.series_id) ?? []), r]);
+    });
+    const gs: ({ type: "series"; at: number; id: string; items: MeetingReservation[] } | (typeof singles)[number])[] = [...singles];
+    series.forEach((arr, id) => {
+      arr.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at));
+      const up = arr.filter((r) => isActive(r) && new Date(r.end_at).getTime() >= now);
+      gs.push({ type: "series", id, items: arr, at: up.length ? +new Date(up[0].start_at) : +new Date(arr[arr.length - 1].start_at) });
+    });
+    return gs.sort((a, b) => {
+      const af = a.at >= now;
+      const bf = b.at >= now;
+      if (af !== bf) return af ? -1 : 1;
+      return af ? a.at - b.at : b.at - a.at;
+    });
+  }, [items, now]);
+
+  const run = (id: string, action: "checkin" | "cancel") => {
+    const c = codeMap.get(id) ?? "";
+    if (action === "cancel" && !confirm("이 예약을 취소할까요?")) return;
+    const r = meetingManage(id, c, action);
+    notify(r.ok ? (action === "checkin" ? "사용 확인이 완료되었습니다." : "예약이 취소되었습니다.") : r.error, !r.ok);
+  };
+
+  return (
+    <div className="space-y-5">
+      <Card className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h3 className="font-bold">내 예약</h3>
+          <p className="text-sm text-ink-3">이 기기에서 예약한 내역은 자동 표시됩니다. 다른 기기에서는 예약코드로 조회하세요.</p>
+        </div>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const c = code.trim().toUpperCase();
+            if (!c) return notify("예약코드를 입력해주세요.", true);
+            const n = meetingFindByCode(c);
+            notify(n ? `예약 ${n}건을 이 기기에 불러왔습니다.` : "일치하는 예약코드가 없습니다.", !n);
+            if (n) setCode("");
+          }}
+        >
+          <input className="input w-44 font-mono uppercase" maxLength={10} placeholder="예약코드 입력" value={code} onChange={(e) => setCode(e.target.value)} />
+          <Button type="submit" variant="dark" className="h-[46px] rounded-[14px]">
+            <Search className="size-4" /> 조회
+          </Button>
+        </form>
+      </Card>
+      <Notice tone="warn">단일 예약은 시작 시각부터 10분 동안 입실확인이 가능하며 미확인 시 자동취소됩니다. 반복·장기예약은 입실확인 대상이 아니며 종료 시간이 지나면 자동으로 사용 완료 처리됩니다.</Notice>
+      {groups.length === 0 && (
+        <Empty>
+          이 기기에서 예약한 내역이 없습니다.
+          <br />
+          다른 기기에서 예약했다면 상단에 예약코드를 입력해주세요.
+        </Empty>
+      )}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {groups.map((g) => {
+          if (g.type === "single") {
+            const r = g.item;
+            const room = rooms.find((x) => x.id === r.room_id);
+            const s = +new Date(r.start_at);
+            const canCheck = r.status === "reserved" && now >= s && now <= s + MEETING_CONFIG.checkinGraceMinutes * 60000;
+            return (
+              <Card key={r.id} className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 font-bold">
+                      <i className="size-2.5 rounded-full" style={{ background: roomColor(r.room_id) }} />
+                      {room?.name}
+                    </p>
+                    <p className="mt-1 text-sm text-ink-2">
+                      {fmtDate(r.start_at)} {fmtTime(r.start_at)}–{fmtTime(r.end_at)} · {r.department} · {r.organizer_name}
+                    </p>
+                    <p className="text-sm text-ink-3">
+                      {r.title} · {r.attendee_count}명
+                    </p>
+                    <span className="mt-2 inline-block rounded-lg bg-canvas px-2 py-1 font-mono text-xs font-bold">예약코드 {codeMap.get(r.id)}</span>
+                  </div>
+                  <Pill className={STATUS_STYLE[r.status]}>{STATUS_TEXT[r.status]}</Pill>
+                </div>
+                {isActive(r) && (
+                  <div className="mt-4 flex gap-2">
+                    {canCheck && (
+                      <Button size="sm" className="flex-1" onClick={() => run(r.id, "checkin")}>
+                        사용 확인
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="flex-1 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-700" onClick={() => run(r.id, "cancel")}>
+                      예약 취소
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            );
+          }
+          const first = g.items[0];
+          const room = rooms.find((x) => x.id === first.room_id);
+          const active = g.items.filter((r) => isActive(r) && +new Date(r.end_at) >= now);
+          const days = [...new Set(g.items.map((r) => "월화수목금토일"[isoDow(r.start_at.slice(0, 10)) - 1]))];
+          const expanded = open.has(g.id);
+          return (
+            <Card key={g.id} className="p-5 lg:col-span-2">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="flex flex-wrap items-center gap-2 font-bold">
+                    <i className="size-2.5 rounded-full" style={{ background: roomColor(first.room_id) }} />
+                    {room?.name}
+                    <Pill className="bg-violet-50 text-violet-700">장기·반복예약</Pill>
+                    <Pill className={active.length ? "bg-brand-50 text-brand-700" : "bg-zinc-100 text-zinc-500"}>{active.length ? `남은 일정 ${active.length}회` : "종료"}</Pill>
+                  </p>
+                  <p className="mt-1 text-sm text-ink-2">
+                    <b>{first.recurrence_label?.replaceAll("-", ".")}</b> · 총 {g.items.length}회 · <b>{days.join("·")}</b> 반복 · {fmtTime(first.start_at)}–{fmtTime(first.end_at)}
+                  </p>
+                  <p className="text-sm text-ink-3">
+                    {first.department} · {first.organizer_name} · {first.title} · {first.attendee_count}명 · 완료 {g.items.filter((r) => r.status === "completed").length} · 취소 {g.items.filter((r) => r.status === "cancelled").length}
+                  </p>
+                  <span className="mt-2 inline-block rounded-lg bg-canvas px-2 py-1 font-mono text-xs font-bold">예약코드 {codeMap.get(first.id)}</span>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setOpen((p) => (p.has(g.id) ? (p.delete(g.id), new Set(p)) : new Set(p.add(g.id))))}>
+                    일정 {expanded ? "접기" : "펼치기"} <ChevronDown className={cn("size-4 transition", expanded && "rotate-180")} />
+                  </Button>
+                  {active.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="bg-rose-50 text-rose-700 hover:bg-rose-100 hover:text-rose-700"
+                      onClick={() => {
+                        if (!confirm(`남은 ${active.length}회 일정을 모두 취소할까요?`)) return;
+                        const r = meetingCancelSeries(g.id, codeMap.get(first.id) ?? "");
+                        notify(r.ok ? `반복예약 ${r.data}회를 취소했습니다.` : r.error, !r.ok);
+                      }}
+                    >
+                      남은 일정 전체 취소
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {expanded && (
+                <ul className="mt-4 divide-y divide-line rounded-2xl border border-line">
+                  {g.items.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                      <span>
+                        <b>
+                          {fmtDate(r.start_at)} · {fmtTime(r.start_at)}–{fmtTime(r.end_at)}
+                        </b>{" "}
+                        <Pill className={cn("ml-1", STATUS_STYLE[r.status])}>{STATUS_TEXT[r.status]}</Pill>
+                      </span>
+                      {isActive(r) && (
+                        <button className="text-xs font-bold text-rose-600" onClick={() => run(r.id, "cancel")}>
+                          이 일정 취소
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- 관리자 ---------------- */
+function Admin() {
+  const { meeting, rooms, meetingAdminCancel, meetingAdminCancelSeries, meetingSetRoomActive, notify } = useDemo();
+  const now = useNow();
+  const [date, setDate] = useState(todayStr());
+  const idx = useIndexed(meeting);
+  const day = (idx.byDate.get(date) ?? []).slice().sort((a, b) => a.__s - b.__s);
+  const cut = now - 30 * 86400000;
+  const recent = meeting.filter((r) => +new Date(r.start_at) >= cut && r.status !== "cancelled");
+  const kpis = [
+    ["선택일 전체 예약", day.filter((r) => r.status !== "cancelled").length],
+    ["현재 사용 중", meeting.filter((r) => isActive(r) && +new Date(r.start_at) <= now && +new Date(r.end_at) > now).length],
+    ["최근 30일 노쇼", meeting.filter((r) => r.status === "no_show" && +new Date(r.start_at) >= cut).length],
+    ["활성 반복예약", new Set(meeting.filter((r) => r.series_id && isActive(r) && +new Date(r.end_at) >= now).map((r) => r.series_id)).size],
+  ] as const;
+  const usage = (key: (r: MeetingReservation) => string) => {
+    const o: Record<string, number> = {};
+    recent.forEach((r) => (o[key(r)] = (o[key(r)] || 0) + (+new Date(r.end_at) - +new Date(r.start_at)) / 3600000));
+    return Object.entries(o).sort((a, b) => b[1] - a[1]);
+  };
+  const byRoom = usage((r) => rooms.find((x) => x.id === r.room_id)?.name ?? r.room_id);
+  const byDept = usage((r) => r.department).slice(0, 8);
+  const max = (arr: [string, number][]) => Math.max(1, ...arr.map((a) => a[1]));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-xs font-bold tracking-widest text-brand-600">ADMIN CONSOLE</p>
+          <h3 className="text-xl font-bold">운영 현황</h3>
+        </div>
+        <input type="date" className="input w-44" value={date} onChange={(e) => setDate(e.target.value)} aria-label="날짜" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {kpis.map(([l, v]) => (
+          <Card key={l} className="p-5">
+            <p className="text-sm text-ink-3">{l}</p>
+            <p className="mt-1 text-3xl font-extrabold">
+              <CountUp value={v} />
+            </p>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+        <Card className="p-5 md:p-6">
+          <CardHeader title="예약 관리" description="강제취소 · 반복예약 전체취소" className="mb-4" />
+          <div className="max-h-[520px] space-y-2 overflow-auto">
+            {day.length === 0 && <Empty>선택한 날짜의 예약이 없습니다.</Empty>}
+            {day.map((r) => (
+              <AdminRow
+                key={r.id}
+                r={r}
+                room={rooms.find((x) => x.id === r.room_id)}
+                onCancel={() => {
+                  if (!confirm("이 예약을 강제취소할까요?")) return;
+                  meetingAdminCancel(r.id);
+                  notify("예약을 강제취소했습니다.");
+                }}
+                onCancelSeries={() => {
+                  if (!confirm("이 반복예약의 남은 일정을 모두 취소할까요?")) return;
+                  meetingAdminCancelSeries(r.series_id!);
+                  notify("반복예약 전체를 취소했습니다.");
+                }}
+              />
+            ))}
+          </div>
+        </Card>
+        <Card className="p-5 md:p-6">
+          <CardHeader title="회의실 운영" description="운영중지 시 신규 예약이 막힙니다." className="mb-4" />
+          <ul className="space-y-2">
+            {rooms.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 rounded-2xl border border-line px-3 py-2.5">
+                <i className="size-2.5 shrink-0 rounded-full" style={{ background: roomColor(r.id) }} />
+                <span className="min-w-0 flex-1">
+                  <b className="block text-sm">
+                    {r.floor}F · {r.name}
+                  </b>
+                  <span className="block truncate text-xs text-ink-3">
+                    {r.capacity}인 · {r.location}
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant={r.active ? "ghost" : "primary"}
+                  className={r.active ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700" : ""}
+                  onClick={() => {
+                    meetingSetRoomActive(r.id, !r.active);
+                    notify(r.active ? `${r.name} 운영을 중지했습니다.` : `${r.name} 운영을 재개했습니다.`);
+                  }}
+                >
+                  {r.active ? "운영중지" : "운영재개"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        {[
+          ["최근 30일 회의실 이용량", byRoom],
+          ["최근 30일 부서별 예약", byDept],
+        ].map(([t, arr]) => (
+          <Reveal key={t as string}>
+            <Card className="p-5 md:p-6">
+              <CardHeader title={t as string} description="예약 시간 합계 (시간)" className="mb-4" />
+              <ul className="space-y-2.5">
+                {(arr as [string, number][]).map(([k, v]) => (
+                  <li key={k}>
+                    <div className="mb-1 flex justify-between text-sm">
+                      <b>{k}</b>
+                      <span className="tabular text-ink-2">{v.toFixed(1)}h</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-canvas">
+                      <motion.div className="h-full rounded-full bg-[color:var(--color-mod-meeting)]" initial={{ width: 0 }} whileInView={{ width: `${(v / max(arr as [string, number][])) * 100}%` }} viewport={{ once: true }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </Reveal>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminRow({ r, room, onCancel, onCancelSeries }: { r: Indexed; room?: Room; onCancel: () => void; onCancelSeries: () => void }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-line p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-1.5 text-sm font-bold">
+          <i className="size-2 rounded-full" style={{ background: roomColor(r.room_id) }} />
+          {fmtTime(r.start_at)}–{fmtTime(r.end_at)} · {room?.name}
+          <Pill className={STATUS_STYLE[r.status]}>{STATUS_TEXT[r.status]}</Pill>
+          {r.series_id && <Pill className="bg-violet-50 text-violet-700">반복</Pill>}
+        </p>
+        <p className="truncate text-xs text-ink-3">
+          {r.department} · {r.organizer_name} · {r.title} · {r.attendee_count}명
+        </p>
+      </div>
+      {isActive(r) && (
+        <div className="flex shrink-0 gap-1.5">
+          <Button size="sm" variant="ghost" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={onCancel}>
+            강제취소
+          </Button>
+          {r.series_id && (
+            <Button size="sm" variant="ghost" className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={onCancelSeries}>
+              반복 전체취소
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- 이용 안내 ---------------- */
+const GUIDES = [
+  ["01 · RESERVE", "30분 단위 예약", "날짜·시간·참석인원을 먼저 입력하면 실제 예약 가능한 회의실만 표시됩니다. 이후 부서, 예약자, 사용목적을 입력해 예약합니다."],
+  ["02 · CHECK-IN", "단일 예약만 10분 내 입실확인", "단일 예약은 시작 후 10분 내 ‘사용 확인’을 눌러주세요. 반복·장기예약은 입실확인 없이 예약이 유지되고 종료 후 자동으로 완료 처리됩니다."],
+  ["03 · RELEASE", "사용하지 않으면 즉시 취소", "다른 직원이 회의실을 사용할 수 있도록 일정이 바뀌면 내 예약에서 바로 취소해주세요."],
+  ["04 · CAPACITY", "인원에 맞는 공간 선택", "4~5인실, 8~12인실, 30인 대회의실로 구분해 적정 규모의 회의실을 선택하도록 설계했습니다."],
+  ["05 · COLLISION", "중복예약 DB 차단", "화면의 사전검사와 별개로 Supabase PostgreSQL에서도 겹치는 시간의 예약을 차단합니다."],
+  ["06 · LONG TERM", "반복·장기 예약", "종료일 제한 없이 원하는 기간과 요일을 선택해 동일 시간으로 반복예약할 수 있습니다. 기간 중 기존 예약과 1건이라도 겹치면 전체 장기예약이 생성되지 않으며, 충돌 예약의 일시·예약자·부서·회의제목을 신청 화면에서 확인할 수 있습니다."],
+  ["07 · ADMIN", "관리자 운영 콘솔", "관리자는 예약 강제취소, 반복예약 전체취소, 회의실 운영중지, 최근 30일 이용량과 노쇼 현황을 확인할 수 있습니다."],
+];
+
+function Guide() {
+  return (
+    <Stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {GUIDES.map(([n, t, d]) => (
+        <motion.div key={n} variants={staggerItem} whileHover={{ y: -4 }} className="rounded-3xl border border-line bg-white p-6 shadow-card">
+          <p className="text-xs font-extrabold tracking-widest text-[color:var(--color-mod-meeting)]">{n}</p>
+          <h4 className="mt-2 text-lg font-bold">{t}</h4>
+          <p className="mt-2 text-sm leading-relaxed text-ink-2">{d}</p>
+        </motion.div>
+      ))}
+    </Stagger>
+  );
+}
