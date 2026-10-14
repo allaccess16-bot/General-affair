@@ -58,16 +58,17 @@ export function SealFormModal({ open, onClose, onCreated }: { open: boolean; onC
   }, [f]);
   const ok = missing.length === 0;
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ok) return notify(`필수 항목을 입력해주세요: ${missing.join(", ")}`, true);
-    const row = sealCreate({
+    const res = await sealCreate({
       ...f,
       seal_certificate_count: f.need_seal_certificate ? f.seal_certificate_count : 0,
       usage_seal_form_count: f.need_usage_seal_form ? f.usage_seal_form_count : 0,
     });
-    notify(`날인 신청이 접수되었습니다 · ${row.request_no}`);
-    onCreated?.(row.request_no);
+    if (!res.ok) return notify(res.error, true);
+    notify(`날인 신청이 접수되었습니다 · ${res.data}`);
+    onCreated?.(res.data ?? "");
     onClose();
   };
 

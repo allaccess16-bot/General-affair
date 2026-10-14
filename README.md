@@ -16,7 +16,14 @@
 
 공통: 상단 내비게이션(스크롤 시 글래스 효과), 통합 검색 팝오버, 알림 팝오버, 모바일 메뉴·하단 탭 바, 신청 모달(데모용, 브라우저 메모리에만 반영).
 
-> **주의**: 총무·차량·회의실 모듈은 기존 시스템과 **같은 데이터 구조·업무 규칙**으로 동작하지만, 데이터는 브라우저(localStorage) 데모 저장소에만 저장되며 **운영 Supabase DB에는 연결되어 있지 않습니다.** 헤더의 ‘일반 직원/관리자’ 버튼은 데모용 권한 전환이며, 데모 데이터의 비밀번호는 `1234` 입니다. 푸터의 ‘데모 데이터 초기화’로 처음 상태로 되돌릴 수 있습니다. 기존 소스 분석과 보안 점검 결과는 `docs/04-기존시스템-소스분석-결과.md`를 참고하세요.
+## 동작 모드
+
+| 모드 | 조건 | 데이터 |
+|---|---|---|
+| **실DB 모드** | 환경변수 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` 설정 | 새 통합 DB(Supabase)에 저장 · 모든 사용자가 공유 · 20초마다 갱신 · 중복예약/상태전이/신청번호는 DB가 검증 |
+| 데모 모드 | 환경변수 없음 | 이 브라우저(localStorage)에만 저장 · 샘플 데이터(비밀번호 `1234`) · 푸터 ‘데모 데이터 초기화’ |
+
+헤더의 배지(`DB 연결` / `데모`)로 현재 모드를 확인할 수 있습니다. ‘일반 직원/관리자’ 버튼은 권한 체험용이며, 로그인·권한 정책은 다음 단계에서 적용합니다. 기존 소스 분석과 보안 점검 결과는 `docs/04-기존시스템-소스분석-결과.md`를 참고하세요.
 
 ## 기술 스택
 
@@ -35,11 +42,12 @@ components/
   modules/           # 모듈 공통 페이지, 하이라이트, 신청 테이블, 신청 모달
   admin/             # 관리자 센터
   art/               # SVG 일러스트 (외부 이미지 없음)
-  providers/         # 데모용 신청 상태 저장소
+  providers/         # 업무 데이터 저장소 (실DB/데모 모드), 통합 신청 목록
 lib/                 # 모듈 정의, 유틸
   ga/ vehicle/ meeting/  # 기존 테이블 구조(타입)·업무 규칙·엑셀 서식
   seed.ts            # 데모 초기 데이터 (기존 구조와 동일한 필드)
   portal.ts          # 모듈 데이터 → 통합 대시보드 공통 항목 변환
+  db/live.ts         # 새 통합 DB(Supabase) 조회·저장 계층
 docs/                # 분석·설계 문서
 supabase/            # 새 통합 DB 마이그레이션 SQL · 이관 스크립트 · DB 테스트 (supabase/README.md)
 ```
@@ -59,9 +67,12 @@ npm run dev
 
 ## GitHub 및 Vercel 배포
 
-1. Vercel에서 **Add New → Project → Import Git Repository** 로 이 저장소를 선택합니다.
-2. Framework Preset은 **Next.js** 로 자동 인식됩니다. **Deploy** 를 누릅니다.
-3. 현재 디자인 프로토타입에는 별도 환경변수가 필요하지 않습니다.
+1. Vercel에서 **Add New → Project → Import Git Repository** 로 이 저장소를 선택합니다. (Root Directory: `./`)
+2. Framework Preset은 **Next.js** 로 자동 인식됩니다.
+3. **Settings → Environment Variables**에 아래 두 값을 추가하고 다시 배포(Redeploy)하면 실DB 모드로 동작합니다 (`.env.example` 참고).
+   - `NEXT_PUBLIC_SUPABASE_URL` = `https://<project-ref>.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = Supabase → Project Settings → API Keys의 anon(publishable) 키
+   > `service_role`(secret) 키는 절대 넣지 마세요.
 
 ## 향후 작업
 

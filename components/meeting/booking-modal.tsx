@@ -93,10 +93,14 @@ export function BookingModal({ open, preset, onClose }: { open: boolean; preset?
       return s;
     });
 
-  const submit = () => {
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (busy) return;
     if (!roomId) return notify("선택한 날짜·시간에 예약 가능한 회의실을 선택해주세요.", true);
     if (!name.trim() || !title.trim() || !dept) return notify("필수 항목을 모두 입력해주세요.", true);
-    const r = meetingCreate({ mode, room_id: roomId, title: title.trim(), organizer_name: name.trim(), department: dept, attendee_count: count, date, start, end, repeatEnd, weekdays: [...weekdays] });
+    setBusy(true);
+    const r = await meetingCreate({ mode, room_id: roomId, title: title.trim(), organizer_name: name.trim(), department: dept, attendee_count: count, date, start, end, repeatEnd, weekdays: [...weekdays] });
+    setBusy(false);
     if (!r.ok) {
       setServerConflicts(r.conflicts ?? []);
       return notify(r.error, true);

@@ -9,6 +9,8 @@
 | `migrations/20261014000005_seal.sql` | 인장 날인 `seal.requests` (법인인감/직인, 사전 승인 증빙, 증명서 발급 희망), 신청번호 자동 발급, 상태 전이 함수, 이력(추가만), 출력용 뷰 |
 | `migrations/20261014000006_portal.sql` | 통합 대시보드 뷰 `core.v_work_items` |
 | `migrations/20261014000007_meeting_cron.sql` | 회의실 자동취소·자동완료 1분 스케줄 (pg_cron) |
+| `migrations/20261014000008_api_access.sql` | 화면(REST API) 접근 권한, 예약코드 조회·관리자 취소·차량 수정/운행완료·총무 수정 함수 |
+| `db-tests/local_api_roles.sql` | 로컬 PostgreSQL에서 Supabase API 역할을 흉내내는 테스트 준비 (Supabase에서는 실행 금지) |
 | `import/legacy_import.sql` | 기존 3개 시스템 CSV → 새 DB 이관 (멱등, 제외 건 사유 기록, 건수 검증 뷰) |
 | `db-tests/run_tests.sql` | 제약·함수 검증 36개 |
 | `db-tests/concurrency_test.sh` | 동시 20건 예약 경합 → 1건만 저장되는지 확인 |

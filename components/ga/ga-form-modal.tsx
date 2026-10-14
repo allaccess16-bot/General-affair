@@ -35,10 +35,11 @@ export function GaFormModal({ open, onClose }: { open: boolean; onClose: () => v
     return required && validFullName(f.requester_name) && validContact(f.contact);
   }, [f]);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ok) return notify("필수 항목을 모두 정확히 입력해주세요. 이름은 자음만 입력할 수 없습니다.", true);
-    gaCreate(f);
+    const r = await gaCreate(f);
+    if (!r.ok) return notify(r.error, true);
     notify("등록되었습니다.");
     onClose();
   };

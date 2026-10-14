@@ -244,8 +244,8 @@ function SealDetailModal({ r, onClose, admin }: { r: SealRequest | null; onClose
     setSealedDate(todayStr());
     setIssued(false);
   }, [r?.id]);
-  const act = (a: SealAction, msg: string) => {
-    const res = sealAct(r!.id, a);
+  const act = async (a: SealAction, msg: string) => {
+    const res = await sealAct(r!.id, a);
     notify(res.ok ? msg : res.error, !res.ok);
   };
   return (
