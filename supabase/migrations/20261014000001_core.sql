@@ -1,10 +1,12 @@
 -- =====================================================================
 -- 0001 공통(core) 스키마 — 하나생명 총무 통합 업무 지원 시스템 (새 통합 DB)
--- 대상: PostgreSQL 15+ / Supabase
+-- 대상: PostgreSQL 15+ / Supabase (GitHub 연동 시 supabase/migrations 순서대로 자동 적용)
 -- 권한·RLS 정책은 별도 단계에서 추가합니다 (현재 범위 제외).
 -- =====================================================================
-create extension if not exists btree_gist;   -- 중복예약 차단(EXCLUDE 제약)에 필요
-create extension if not exists pgcrypto;     -- 예약코드 해시
+-- Supabase는 확장을 extensions 스키마에 설치합니다 (로컬 PostgreSQL에서도 동일하게 동작).
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;   -- 중복예약 차단(EXCLUDE 제약)에 필요
+create extension if not exists pgcrypto with schema extensions;     -- 예약코드 해시
 
 create schema if not exists core;
 create schema if not exists ga;

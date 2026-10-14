@@ -104,7 +104,7 @@ select r.id, r.room_id, rm.name as room_name, rm.floor, rm.capacity, rm.location
 from meeting.reservations r join meeting.rooms rm on rm.id = r.room_id;
 
 create or replace function meeting.hash_code(p_code text)
-returns text language sql immutable as $$ select encode(digest(upper(btrim(p_code)), 'sha256'), 'hex') $$;
+returns text language sql immutable as $$ select encode(extensions.digest(upper(btrim(p_code)), 'sha256'), 'hex') $$;
 
 -- 단일 예약
 create or replace function meeting.create_reservation(
