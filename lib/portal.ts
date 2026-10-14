@@ -5,6 +5,7 @@
  */
 import type { RequestStatus, WorkRequest } from "@/lib/data";
 import type { GaRequest, GaStatus } from "@/lib/ga";
+import type { SealRequest, SealStatus } from "@/lib/seal";
 import { fmtTime, ROOMS, seoulParts, type MeetingReservation, type MeetingStatus } from "@/lib/meeting";
 import { todayStr } from "@/lib/shared";
 import { vehicleLabel, type VehicleReservation, type VehicleStatus } from "@/lib/vehicle";
@@ -76,5 +77,22 @@ function meetingItem(r: MeetingReservation, series: boolean): WorkRequest {
     requestedAt: todayStr(new Date(r.created_at)),
     scheduledAt: series ? `${r.recurrence_label?.replaceAll("-", ".").replace(/^\d{4}\./, "")} · ${fmtTime(r.start_at)}–${fmtTime(r.end_at)}` : `${md(d)} ${fmtTime(r.start_at)}–${fmtTime(r.end_at)}`,
     status: MR_MAP[r.status],
+  };
+}
+
+const SEAL_MAP: Record<SealStatus, RequestStatus> = { 접수: "접수", 검토중: "진행중", 승인: "승인완료", 반려: "반려", 날인완료: "완료", 취소: "취소" };
+
+export function fromSeal(r: SealRequest): WorkRequest {
+  return {
+    id: `seal:${r.id}`,
+    no: r.request_no,
+    module: "seal",
+    title: `${r.seal_kind} · ${r.document_name}`,
+    requester: r.requester_name,
+    dept: r.department,
+    requestedAt: r.requested_at,
+    scheduledAt: `${md(r.needed_date)} 필요 · ${r.quantity}부`,
+    status: SEAL_MAP[r.status],
+    urgent: r.needed_date <= r.requested_at,
   };
 }

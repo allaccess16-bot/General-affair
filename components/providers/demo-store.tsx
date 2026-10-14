@@ -23,11 +23,12 @@ import {
   type MeetingReservation,
   type Room,
 } from "@/lib/meeting";
-import { seedGa, seedMeeting, seedRooms, seedVehicles } from "@/lib/seed";
-import { addDays, nowIso, uid } from "@/lib/shared";
+import { nextRequestNo, type SealInput, type SealRequest, type SealStatus } from "@/lib/seal";
+import { seedGa, seedMeeting, seedRooms, seedSeal, seedVehicles } from "@/lib/seed";
+import { addDays, nowIso, todayStr, uid } from "@/lib/shared";
 import { findConflicts, resEnd, resStart, type CompletionInput, type VehicleInput, type VehicleReservation, type VehicleStatus } from "@/lib/vehicle";
 
-const KEY = "hanaworks-demo-v3";
+const KEY = "hanaworks-demo-v4";
 
 type Role = "user" | "admin";
 type Mine = { id: string; code: string };
@@ -38,7 +39,15 @@ type State = {
   meeting: MeetingReservation[];
   rooms: Room[];
   myMeeting: Mine[];
+  seal: SealRequest[];
 };
+
+export type SealAction =
+  | { type: "review"; actor: string }
+  | { type: "approve"; actor: string; note?: string }
+  | { type: "reject"; actor: string; reason: string }
+  | { type: "seal"; actor: string; sealed_date: string; sealed_by: string; certificates_issued: boolean }
+  | { type: "cancel"; actor: string };
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string; conflicts?: MeetingReservation[] };
 
@@ -64,6 +73,8 @@ type Ctx = State & {
   meetingAdminCancel: (id: string) => void;
   meetingAdminCancelSeries: (seriesId: string) => void;
   meetingSetRoomActive: (roomId: string, active: boolean) => void;
+  sealCreate: (input: SealInput) => SealRequest;
+  sealAct: (id: string, action: SealAction) => Result;
 };
 
 export type MeetingCreate = {
@@ -84,11 +95,11 @@ const StoreContext = createContext<Ctx | null>(null);
 
 function initial(): State {
   const m = seedMeeting();
-  return { ga: seedGa(), vehicles: seedVehicles(), meeting: m.list, rooms: seedRooms(), myMeeting: m.mine };
+  return { ga: seedGa(), vehicles: seedVehicles(), meeting: m.list, rooms: seedRooms(), myMeeting: m.mine, seal: seedSeal() };
 }
 
 export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<State>({ ga: [], vehicles: [], meeting: [], rooms: [], myMeeting: [] });
+  const [state, setState] = useState<State>({ ga: [], vehicles: [], meeting: [], rooms: [], myMeeting: [], seal: [] });
   const [ready, setReady] = useState(false);
   const [role, setRoleState] = useState<Role>("user");
   const [toast, setToast] = useState<{ msg: string; error: boolean; key: number } | null>(null);
@@ -104,7 +115,7 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       const savedRole = localStorage.getItem(`${KEY}:role`);
       if (savedRole === "admin" || savedRole === "user") setRoleState(savedRole);
     } catch {}
-    const s = loaded && Array.isArray(loaded.ga) ? loaded : initial();
+    const s = loaded && Array.isArray(loaded.ga) && Array.isArray(loaded.seal) ? loaded : initial();
     setState({ ...s, meeting: sweepStatuses(s.meeting) });
     setReady(true);
   }, []);
@@ -291,6 +302,60 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     setState((st) => ({ ...st, rooms: st.rooms.map((r) => (r.id === roomId ? { ...r, active } : r)) }));
   }, []);
 
+  /* ---------- 인장 날인 ---------- */
+  const sealCreate = useCallback((input: SealInput) => {
+    const today = todayStr();
+    const at = nowIso();
+    const row: SealRequest = {
+      ...input,
+      id: uid(),
+      request_no: nextRequestNo(stateRef.current.seal, today),
+      requested_at: today,
+      attachments: [],
+      status: "접수",
+      history: [{ at, action: "신청 접수", actor: input.requester_name }],
+      created_at: at,
+      updated_at: at,
+    };
+    setState((s) => ({ ...s, seal: [row, ...s.seal] }));
+    return row;
+  }, []);
+
+  /** 상태 전이 규칙 — 승인(결재 완료)과 날인완료(실제 날인)는 별도 단계 */
+  const sealAct = useCallback((id: string, a: SealAction): Result => {
+    const r = stateRef.current.seal.find((x) => x.id === id);
+    if (!r) return { ok: false, error: "신청 정보를 찾을 수 없습니다." };
+    const allowed: Record<SealAction["type"], SealStatus[]> = {
+      review: ["접수"],
+      approve: ["접수", "검토중"],
+      reject: ["접수", "검토중"],
+      seal: ["승인"],
+      cancel: ["접수", "검토중", "승인"],
+    };
+    if (!allowed[a.type].includes(r.status)) return { ok: false, error: `현재 상태(${r.status})에서는 처리할 수 없습니다.` };
+    if (a.type === "reject" && !a.reason.trim()) return { ok: false, error: "반려 사유를 입력해주세요." };
+    if (a.type === "seal" && (!a.sealed_date || !a.sealed_by.trim())) return { ok: false, error: "실제 날인 일자와 처리자를 입력해주세요." };
+    const at = nowIso();
+    const patch: Partial<SealRequest> =
+      a.type === "review"
+        ? { status: "검토중", handler: a.actor }
+        : a.type === "approve"
+          ? { status: "승인", approved_at: at, handler: r.handler ?? a.actor }
+          : a.type === "reject"
+            ? { status: "반려", reject_reason: a.reason.trim() }
+            : a.type === "seal"
+              ? { status: "날인완료", sealed_date: a.sealed_date, sealed_by: a.sealed_by.trim(), certificates_issued: a.certificates_issued }
+              : { status: "취소" };
+    const label = { review: "검토 시작", approve: "승인", reject: "반려", seal: "날인 완료", cancel: "신청 취소" }[a.type];
+    const note = a.type === "reject" ? a.reason.trim() : a.type === "approve" ? a.note : a.type === "seal" ? `날인일 ${a.sealed_date}${a.certificates_issued ? " · 증명서 발급 완료" : ""}` : undefined;
+    setState((s) => ({
+      ...s,
+      // 이력은 추가만 가능 (수정·삭제 없음)
+      seal: s.seal.map((x) => (x.id === id ? { ...x, ...patch, history: [...x.history, { at, action: label, actor: a.actor, note }], updated_at: at } : x)),
+    }));
+    return { ok: true };
+  }, []);
+
   const value = useMemo<Ctx>(
     () => ({
       ...state,
@@ -314,8 +379,10 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
       meetingAdminCancel,
       meetingAdminCancelSeries,
       meetingSetRoomActive,
+      sealCreate,
+      sealAct,
     }),
-    [state, ready, role, setRole, notify, resetDemo, gaCreate, gaUpdate, gaRemove, vehicleCreate, vehicleEdit, vehicleSetStatus, vehicleComplete, vehicleRemove, meetingCreate, meetingManage, meetingCancelSeries, meetingFindByCode, meetingAdminCancel, meetingAdminCancelSeries, meetingSetRoomActive],
+    [state, ready, role, setRole, notify, resetDemo, gaCreate, gaUpdate, gaRemove, vehicleCreate, vehicleEdit, vehicleSetStatus, vehicleComplete, vehicleRemove, meetingCreate, meetingManage, meetingCancelSeries, meetingFindByCode, meetingAdminCancel, meetingAdminCancelSeries, meetingSetRoomActive, sealCreate, sealAct],
   );
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ChevronDown, ChevronLeft, ChevronRight, Clock3, DoorOpen, Repeat, Search, Users } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { AdminGate } from "@/components/modules/admin-gate";
@@ -14,12 +14,13 @@ import { Empty, Notice, Pill, Tabs } from "@/components/ui/form";
 import { Modal } from "@/components/ui/modal";
 import { Reveal, Stagger, staggerItem } from "@/components/ui/reveal";
 import { fmtDate, fmtTime, isActive, isoDow, MEETING_CONFIG, roomColor, STATUS_TEXT, type MeetingReservation, type MeetingStatus, type Room } from "@/lib/meeting";
-import { addDays, todayStr } from "@/lib/shared";
+import { todayStr } from "@/lib/shared";
 import { cn } from "@/lib/utils";
 import { BookingModal, type BookingPreset } from "./booking-modal";
-import { DayGrid, DayTimeline, MonthCalendar, useIndexed, WeekAvailability, type Indexed } from "./schedule";
+import { DayBoard, NowBoard, QuickFinder } from "./overview";
+import { MonthCalendar, useIndexed, WeekAvailability, type Indexed } from "./schedule";
 
-type Tab = "dashboard" | "schedule" | "mine" | "admin" | "guide";
+type Tab = "overview" | "calendar" | "week" | "mine" | "admin" | "guide";
 type Floor = "all" | 12 | 13;
 
 const STATUS_STYLE: Record<MeetingStatus, string> = {
@@ -42,7 +43,7 @@ function useNow(ms = 30000) {
 export function MeetingApp() {
   const { ready, role, rooms } = useDemo();
   const params = useSearchParams();
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>("overview");
   const [booking, setBooking] = useState<{ open: boolean; preset?: BookingPreset }>({ open: false });
   const [detail, setDetail] = useState<MeetingReservation | null>(null);
 
@@ -73,8 +74,9 @@ export function MeetingApp() {
           value={tab}
           onChange={setTab}
           items={[
-            { value: "dashboard", label: "대시보드" },
-            { value: "schedule", label: "예약 현황" },
+            { value: "overview", label: "한눈에 보기" },
+            { value: "calendar", label: "월간 달력" },
+            { value: "week", label: "회의실별 7일" },
             { value: "mine", label: "내 예약" },
             { value: "admin", label: "관리자", locked: role !== "admin" },
             { value: "guide", label: "이용 안내" },
@@ -85,8 +87,9 @@ export function MeetingApp() {
           <div className="h-80 animate-pulse rounded-3xl bg-white" />
         ) : (
           <>
-            {tab === "dashboard" && <Dashboard onBook={openBooking} onDetail={setDetail} />}
-            {tab === "schedule" && <Schedule onBook={openBooking} onDetail={setDetail} />}
+            {tab === "overview" && <Overview onBook={openBooking} onDetail={setDetail} />}
+            {tab === "calendar" && <CalendarView onBook={openBooking} onDetail={setDetail} />}
+            {tab === "week" && <WeekView onBook={openBooking} onDetail={setDetail} />}
             {tab === "mine" && <Mine />}
             {tab === "admin" && (
               <AdminGate>
@@ -115,182 +118,72 @@ function FloorChips({ value, onChange }: { value: Floor; onChange: (f: Floor) =>
   );
 }
 
-/* ---------------- 대시보드 ---------------- */
-function Dashboard({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
+/* ---------------- 한눈에 보기 ---------------- */
+function Overview({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
   const { meeting, rooms } = useDemo();
-  const now = useNow();
-  const [floor, setFloor] = useState<Floor>("all");
-  const [date, setDate] = useState(todayStr());
   const idx = useIndexed(meeting);
-  const today = todayStr();
-  const todays = idx.byDate.get(today) ?? [];
-  const busyNow = new Set(todays.filter((r) => isActive(r) && new Date(r.start_at).getTime() <= now && new Date(r.end_at).getTime() > now).map((r) => r.room_id));
-  const stats = [
-    { label: "지금 이용 가능", value: rooms.filter((r) => r.active && !busyNow.has(r.id)).length, sub: "전체 회의실 기준", icon: DoorOpen },
-    { label: "현재 사용 중", value: busyNow.size, sub: "현재 예약 점유 기준", icon: Users },
-    { label: "오늘 남은 예약", value: todays.filter((r) => isActive(r) && new Date(r.start_at).getTime() > now).length, sub: "현재 시각 이후", icon: Clock3 },
-    { label: "오늘 자동취소", value: todays.filter((r) => r.status === "no_show").length, sub: "10분 미입실", icon: Repeat },
-  ];
-  const list = rooms.filter((r) => floor === "all" || r.floor === floor);
-
+  const [date, setDate] = useState(todayStr());
+  const [floor, setFloor] = useState<Floor>("all");
   return (
-    <div className="space-y-6">
-      <Stagger className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {stats.map((s) => (
-          <motion.div key={s.label} variants={staggerItem} className="rounded-3xl border border-line bg-white p-5 shadow-card">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-ink-2">{s.label}</p>
-              <s.icon className="size-5 text-[color:var(--color-mod-meeting)]" />
-            </div>
-            <p className="mt-2 text-3xl font-extrabold">
-              <CountUp value={s.value} />
-            </p>
-            <p className="text-xs text-ink-3">{s.sub}</p>
-          </motion.div>
-        ))}
-      </Stagger>
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h3 className="text-xl font-bold">회의실 현황</h3>
-          <p className="text-sm text-ink-3">선택한 날짜의 예약과 현재 상태를 확인합니다.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <FloorChips value={floor} onChange={setFloor} />
-          <input type="date" className="input w-44" value={date} onChange={(e) => setDate(e.target.value)} aria-label="날짜" />
-        </div>
-      </div>
-      <Stagger className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {list.map((room) => {
-          const rs = idx.active(room.id, date).slice().sort((a, b) => a.__s - b.__s);
-          const isToday = date === today;
-          const current = isToday ? rs.find((r) => new Date(r.start_at).getTime() <= now && new Date(r.end_at).getTime() > now) : undefined;
-          const next = rs.find((r) => new Date(r.start_at).getTime() > now || !isToday);
-          let label = "예약 가능";
-          let cls = "bg-brand-50 text-brand-700";
-          if (!room.active) (label = "운영 중지"), (cls = "bg-zinc-100 text-zinc-500");
-          else if (current) (label = "사용 중"), (cls = "bg-rose-50 text-rose-700");
-          else if (next && isToday && new Date(next.start_at).getTime() - now < 3600000) (label = "곧 예약"), (cls = "bg-amber-50 text-amber-800");
-          const color = roomColor(room.id);
-          return (
-            <motion.article key={room.id} variants={staggerItem} whileHover={{ y: -4 }} className="flex flex-col rounded-3xl border bg-white p-5 shadow-card transition-shadow hover:shadow-lift" style={{ borderColor: `${color}33` }}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-ink-3">
-                    <i className="size-2.5 rounded-full" style={{ background: color }} /> {room.floor}F · ROOM
-                  </p>
-                  <h4 className="mt-1 text-lg font-bold">{room.name}</h4>
-                </div>
-                <Pill className={cls}>{label}</Pill>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded-xl bg-canvas px-3 py-2">
-                  <p className="text-ink-3">최대 인원</p>
-                  <p className="font-bold">{room.capacity}명</p>
-                </div>
-                <div className="rounded-xl bg-canvas px-3 py-2">
-                  <p className="text-ink-3">위치</p>
-                  <p className="truncate font-bold">{room.location}</p>
-                </div>
-              </div>
-              <button
-                className="mt-3 flex-1 rounded-xl px-3 py-2.5 text-left text-xs leading-relaxed"
-                style={{ background: `${color}12` }}
-                onClick={() => (current ?? next) && onDetail((current ?? next)!)}
-              >
-                {!room.active
-                  ? "관리자에 의해 신규 예약이 중지된 회의실입니다."
-                  : current
-                    ? `${fmtTime(current.start_at)}–${fmtTime(current.end_at)} · ${current.department} / ${current.title}`
-                    : next
-                      ? `다음 예약 ${fmtTime(next.start_at)}–${fmtTime(next.end_at)} · ${next.department} / ${next.organizer_name} · ${next.title}${next.series_id ? " · 반복" : ""}`
-                      : "선택한 날짜에 예정된 예약이 없습니다."}
-              </button>
-              <div className="mt-3 flex gap-[2px]">
-                {Array.from({ length: 24 }, (_, i) => {
-                  const s = 480 + i * 30;
-                  const busy = rs.some((r) => r.__s < s + 30 && r.__e > s);
-                  return <i key={i} className="h-1.5 flex-1 rounded-full" style={{ background: busy ? color : "var(--color-line)" }} />;
-                })}
-              </div>
-              <Button size="sm" variant="secondary" className="mt-4" disabled={!room.active} onClick={() => onBook({ roomId: room.id, date })}>
-                이 회의실 예약
-              </Button>
-            </motion.article>
-          );
-        })}
-      </Stagger>
+    <div className="space-y-5">
+      <Reveal>
+        <NowBoard rooms={rooms} idx={idx} onBook={onBook} onDetail={onDetail} />
+      </Reveal>
+      <Reveal delay={0.05}>
+        <QuickFinder rooms={rooms} idx={idx} onBook={onBook} />
+      </Reveal>
+      <Reveal delay={0.1}>
+        <DayBoard rooms={rooms} idx={idx} date={date} setDate={setDate} floor={floor} setFloor={setFloor} onBook={onBook} onDetail={onDetail} />
+      </Reveal>
     </div>
   );
 }
 
-/* ---------------- 예약 현황 ---------------- */
-function Schedule({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
+/* ---------------- 월간 달력 ---------------- */
+function CalendarView({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
   const { meeting, rooms } = useDemo();
-  const [view, setView] = useState<"overview" | "day" | "availability">("overview");
-  const [floor, setFloor] = useState<Floor>("all");
-  const [date, setDate] = useState(todayStr());
-  const [roomId, setRoomId] = useState(rooms[0]?.id ?? "");
   const idx = useIndexed(meeting);
+  const [date, setDate] = useState(todayStr());
+  const [floor, setFloor] = useState<Floor>("all");
   const list = rooms.filter((r) => floor === "all" || r.floor === floor);
-  const room = rooms.find((r) => r.id === roomId) ?? list[0];
-
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex gap-1 overflow-x-auto rounded-2xl bg-canvas p-1 scrollbar-none">
-          {(
-            [
-              ["overview", "월간 캘린더"],
-              ["day", "날짜별 예약"],
-              ["availability", "회의실 7일 보기"],
-            ] as const
-          ).map(([v, l]) => (
-            <button key={v} onClick={() => setView(v)} className={cn("shrink-0 rounded-xl px-4 py-2 text-sm font-bold", view === v ? "bg-white text-ink shadow-card" : "text-ink-3")}>
-              {l}
+      <div className="flex justify-end">
+        <FloorChips value={floor} onChange={setFloor} />
+      </div>
+      <MonthCalendar selected={date} onSelect={setDate} rooms={list} idx={idx} />
+      <DayBoard rooms={rooms} idx={idx} date={date} setDate={setDate} floor={floor} setFloor={setFloor} onBook={onBook} onDetail={onDetail} showNav={false} />
+    </div>
+  );
+}
+
+/* ---------------- 회의실별 7일 ---------------- */
+function WeekView({ onBook, onDetail }: { onBook: (p?: BookingPreset) => void; onDetail: (r: MeetingReservation) => void }) {
+  const { meeting, rooms } = useDemo();
+  const idx = useIndexed(meeting);
+  const [date, setDate] = useState(todayStr());
+  const [roomId, setRoomId] = useState(rooms[0]?.id ?? "");
+  const room = rooms.find((r) => r.id === roomId) ?? rooms[0];
+  if (!room) return null;
+  return (
+    <div className="space-y-4">
+      <Card className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
+        <span className="text-sm font-bold">회의실 선택</span>
+        <div className="flex flex-1 gap-1.5 overflow-x-auto scrollbar-none">
+          {rooms.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setRoomId(r.id)}
+              className={cn("flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-bold transition", r.id === room.id ? "border-ink bg-ink text-white" : "border-line bg-white text-ink-2")}
+            >
+              <i className="size-2 rounded-full" style={{ background: roomColor(r.id) }} />
+              {r.name.replace("회의실 ", "")}
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FloorChips value={floor} onChange={setFloor} />
-          <div className="flex items-center gap-1">
-            <button className="grid size-10 place-items-center rounded-full border border-line bg-white" onClick={() => setDate(addDays(date, -1))} aria-label="이전 날짜">
-              <ChevronLeft className="size-4" />
-            </button>
-            <input type="date" className="input w-40" value={date} onChange={(e) => setDate(e.target.value)} aria-label="날짜" />
-            <button className="grid size-10 place-items-center rounded-full border border-line bg-white" onClick={() => setDate(addDays(date, 1))} aria-label="다음 날짜">
-              <ChevronRight className="size-4" />
-            </button>
-            <Button size="sm" variant="secondary" className="h-10" onClick={() => setDate(todayStr())}>
-              오늘
-            </Button>
-          </div>
-          <Button size="sm" className="h-10" onClick={() => onBook({ date })}>
-            + 예약
-          </Button>
-        </div>
-      </div>
-      {view === "overview" && (
-        <>
-          <MonthCalendar selected={date} onSelect={setDate} rooms={list} idx={idx} />
-          <DayGrid date={date} rooms={list} idx={idx} onFree={(rid, s, e) => onBook({ roomId: rid, date, start: s, end: e })} onBusy={onDetail} />
-        </>
-      )}
-      {view === "day" && <DayTimeline date={date} rooms={list} idx={idx} onBusy={onDetail} />}
-      {view === "availability" && room && (
-        <>
-          <Card className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center">
-            <span className="text-sm font-bold">빈 시간을 확인할 회의실</span>
-            <select className="input sm:w-72" value={room.id} onChange={(e) => setRoomId(e.target.value)}>
-              {list.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.floor}F · {r.name} · {r.capacity}인
-                </option>
-              ))}
-            </select>
-          </Card>
-          <WeekAvailability room={room} from={date} idx={idx} onFree={(d, s, e) => onBook({ roomId: room.id, date: d, start: s, end: e })} onBusy={onDetail} />
-        </>
-      )}
+        <input type="date" className="input w-40" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="시작 날짜" />
+      </Card>
+      <WeekAvailability room={room} from={date} idx={idx} onFree={(d, s, e) => onBook({ roomId: room.id, date: d, start: s, end: e })} onBusy={onDetail} />
     </div>
   );
 }

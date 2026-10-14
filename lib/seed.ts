@@ -127,7 +127,7 @@ export function seedMeeting(now = new Date()): { list: MeetingReservation[]; min
     ["13-4", 1, "09:00", "10:00", "투자 심사", "최하준", "투자심사부", 8],
     ["12-3", 2, "14:00", "16:00", "계리 검토", "서지아", "계리부", 7],
     ["13-3", 2, "10:00", "11:00", "QA 점검", "조아인", "계약심사부", 4],
-    ["12-4", 3, "15:00", "16:00", "보안 점검", "윤채원", "정보보호지원팀", 3],
+    ["12-4", 3, "15:00", "16:00", "보안 점검", "윤채원", "정보보호지원부", 3],
     ["13-L", -1, "10:00", "12:00", "임원 회의", "김경영", "경영지원부", 18],
     ["12-3", -1, "14:00", "15:00", "주간 실무회의", "박지민", "재무기획부", 6],
     ["13-4", -2, "13:00", "15:00", "상품 전략", "문태오", "상품부", 11],
@@ -174,4 +174,67 @@ export function seedMeeting(now = new Date()): { list: MeetingReservation[]; min
     mine.push({ id, code: seriesCode });
   }
   return { list, mine };
+}
+
+/** 인장 날인 신청 — 상태별 예시 */
+export function seedSeal(today = todayStr()): import("@/lib/seal").SealRequest[] {
+  type R = [number, string, string, "법인인감" | "직인", string, string, string, number, number, string, string, string, boolean, boolean, import("@/lib/seal").SealStatus, string?];
+  const rows: R[] = [
+    [0, "박지민", "재무기획부", "법인인감", "본사 사무실 임대차 계약 체결", "임대차 계약서", "㈜한빛빌딩", 3, 2, "전자결재", "경영-2026-1012", "김경영 부장", false, false, "접수"],
+    [0, "서지아", "금융기관제휴사업부", "직인", "제휴 은행 업무협약 체결", "업무협약서(MOU)", "하나은행", 2, 3, "전자결재", "제휴-2026-0331", "이제휴 본부장", false, false, "검토중"],
+    [-1, "한지우", "손님지원센터", "직인", "보험금 지급 확인서 발급", "보험금 지급 확인서", "손님 제출용", 1, 1, "서면결재", "손님-2026-0877", "정손님 센터장", false, false, "승인"],
+    [-2, "백승호", "재무기획부", "법인인감", "은행 여신 약정 체결", "여신거래 약정서", "하나은행 여의도지점", 2, 1, "전자결재", "재무-2026-0457", "김재무 부장", true, true, "승인"],
+    [-3, "임서준", "영업기획부", "직인", "판매 대리점 계약 갱신", "대리점 위탁계약서", "GA 법인", 4, 3, "이메일 승인", "", "최영업 본부장", false, false, "반려", "사전 승인 증빙(결재문서 번호) 누락 — 결재 완료 후 재신청 바랍니다."],
+    [-4, "강예린", "리스크관리부", "법인인감", "재보험 계약 체결", "재보험 특약 계약서", "코리안리", 2, 1, "전자결재", "리스크-2026-0210", "남리스크 부장", true, false, "날인완료"],
+    [-6, "조아인", "계약관리부", "직인", "공문 발송", "협조 요청 공문", "금융감독원", 1, 1, "전자결재", "계약-2026-0119", "윤계약 부장", false, false, "날인완료"],
+    [-9, "문태오", "상품부", "법인인감", "상품 위탁 개발 계약", "용역 계약서", "㈜상품랩", 2, 2, "서면결재", "상품-2026-0098", "오상품 부장", false, true, "날인완료"],
+    [-12, "윤채원", "정보보호지원부", "직인", "보안 점검 결과 제출", "정보보호 점검 확인서", "금융보안원", 1, 1, "전자결재", "정보-2026-0077", "고보안 부장", false, false, "날인완료"],
+  ];
+  const counters: Record<string, number> = {};
+  return rows.map(([d, name, dept, kind, purpose, doc, to, qty, need, method, docNo, approver, cert, usage, status, reason], i) => {
+    const date = addDays(today, d);
+    const ym = date.slice(0, 7).replace("-", "");
+    counters[ym] = (counters[ym] ?? 0) + 1;
+    const at = iso(date, `${String(9 + (i % 6)).padStart(2, "0")}:20`);
+    const history: import("@/lib/seal").SealHistory[] = [{ at, action: "신청 접수", actor: name }];
+    if (status !== "접수") history.push({ at: iso(date, "15:00"), action: "검토 시작", actor: "송현우(경영지원부)" });
+    if (["승인", "날인완료"].includes(status)) history.push({ at: iso(addDays(date, 1), "10:00"), action: "승인", actor: "김경영(경영지원부장)" });
+    if (status === "반려") history.push({ at: iso(addDays(date, 1), "10:00"), action: "반려", actor: "김경영(경영지원부장)", note: reason });
+    if (status === "날인완료") history.push({ at: iso(addDays(date, 1), "14:00"), action: "날인 완료", actor: "송현우(경영지원부)" });
+    return {
+      id: `seal-${i + 1}`,
+      request_no: `SEAL-${ym}-${String(counters[ym]).padStart(4, "0")}`,
+      requested_at: date,
+      requester_name: name,
+      department: dept,
+      contact: `내선 ${1400 + i * 37}`,
+      seal_kind: kind,
+      purpose,
+      document_name: doc,
+      submit_to: to,
+      needed_date: addDays(date, need),
+      quantity: qty,
+      approval_method: method,
+      approval_doc_no: docNo,
+      approver_name: approver,
+      approval_date: date,
+      approval_note: "",
+      need_seal_certificate: cert,
+      seal_certificate_count: cert ? 1 : 0,
+      need_usage_seal_form: usage,
+      usage_seal_form_count: usage ? 1 : 0,
+      remarks: "",
+      attachments: [],
+      status,
+      reject_reason: reason ?? null,
+      handler: status === "접수" ? null : "송현우",
+      approved_at: ["승인", "날인완료"].includes(status) ? iso(addDays(date, 1), "10:00") : null,
+      sealed_date: status === "날인완료" ? addDays(date, 1) : null,
+      sealed_by: status === "날인완료" ? "송현우" : null,
+      certificates_issued: status === "날인완료" && (cert || usage),
+      history,
+      created_at: at,
+      updated_at: at,
+    };
+  });
 }

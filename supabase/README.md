@@ -1,0 +1,50 @@
+# 새 통합 DB (Supabase / PostgreSQL)
+
+| 파일 | 내용 |
+|---|---|
+| `migrations/0001_core.sql` | 확장(btree_gist, pgcrypto), 스키마, 부서(정보보호지원부 통일 + 별칭), 감사 로그(수정·삭제 불가) |
+| `migrations/0002_ga.sql` | 총무 업무요청 `ga.requests` (기존 `requests` 구조) |
+| `migrations/0003_vehicle.sql` | 법인차량 `vehicle.vehicles`, `vehicle.reservations` + **중복 배차 DB 차단**, 기존 화면 호환 뷰 |
+| `migrations/0004_meeting.sql` | 회의실 `meeting.rooms`, `meeting.reservations` + **중복 예약 DB 차단**, 예약·반복예약·입실확인·취소·자동취소 함수 |
+| `migrations/0005_seal.sql` | 인장 날인 `seal.requests` (법인인감/직인, 사전 승인 증빙, 증명서 발급 희망), 신청번호 자동 발급, 상태 전이 함수, 이력(추가만), 출력용 뷰 |
+| `migrations/0006_portal.sql` | 통합 대시보드 뷰 `core.v_work_items` |
+| `import/legacy_import.sql` | 기존 3개 시스템 CSV → 새 DB 이관 (멱등, 제외 건 사유 기록, 건수 검증 뷰) |
+| `tests/run_tests.sql` | 제약·함수 검증 36개 |
+| `tests/concurrency_test.sh` | 동시 20건 예약 경합 → 1건만 저장되는지 확인 |
+| `tests/import_test.sql` | 이관 스크립트 검증 (겹치는 기존 예약 분리, 재실행 중복 없음) |
+
+## 중복예약 차단 방식
+
+```sql
+constraint meeting_no_overlap exclude using gist (
+  room_id with =,
+  tstzrange(start_at, end_at, '[)') with &&
+) where (status in ('reserved', 'checked_in'))
+```
+
+- 같은 회의실(차량)에서 **활성 상태** 예약의 시간 구간이 겹치면 INSERT·UPDATE가 DB에서 거부됩니다.
+- 화면 검사와 무관하게 동작하므로 **여러 사람이 동시에 신청해도 1건만 저장**됩니다(트랜잭션·격리수준과 무관).
+- `[)` 반열린 구간이라 10:00–11:00 다음 11:00–12:00 예약은 허용됩니다.
+- 취소·자동취소·사용완료(차량은 반려·사용완료)는 점유하지 않으므로 같은 시간을 다시 예약할 수 있습니다.
+- 반복예약은 전체 회차를 한 트랜잭션에서 INSERT → 1건이라도 겹치면 전체 롤백(all-or-nothing). 충돌 목록은 사전 조회로 반환합니다.
+- 회의실은 추가로 30분 단위·운영시간(08–20시)·정원·운영중지를 DB에서 검사합니다.
+
+## 적용 방법
+
+```bash
+# Supabase CLI
+supabase db push            # migrations/ 순서대로 적용
+
+# 또는 psql
+for f in supabase/migrations/*.sql; do psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"; done
+psql "$DATABASE_URL" -f supabase/tests/run_tests.sql      # 테스트 DB에서만 실행
+```
+
+회의실 자동취소/자동완료는 pg_cron으로 1분마다 실행합니다.
+
+```sql
+select cron.schedule('meeting-sweep', '* * * * *', 'select meeting.sweep_statuses()');
+```
+
+> 권한·RLS 정책은 현재 범위에서 제외했습니다. 운영 전 별도 마이그레이션으로 추가합니다.
+> Supabase에서 `core`·`ga`·`vehicle`·`meeting`·`seal` 스키마를 API로 노출하려면 Settings → API → Exposed schemas에 추가합니다.

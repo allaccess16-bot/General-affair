@@ -25,13 +25,6 @@ export const STATUSES: RequestStatus[] = ["접수", "진행중", "승인대기",
 
 export const TODAY = "2026-10-14";
 
-/** 인장 날인(신규 모듈) 샘플 — 총무·차량·회의실은 lib/seed.ts 의 기존 구조 데이터 사용 */
-export const SAMPLE_REQUESTS: WorkRequest[] = [
-  { id: "r3", no: "SEAL-202610-0021", module: "seal", title: "법인인감 · 임대차 계약서", requester: "박지민", dept: "재무기획부", requestedAt: "2026-10-14", scheduledAt: "10.17 (토) 필요", status: "승인대기", urgent: true },
-  { id: "r6", no: "SEAL-202610-0020", module: "seal", title: "사용인감 · 보험금 지급 확인서", requester: "한지우", dept: "손님지원센터", requestedAt: "2026-10-13", scheduledAt: "10.14 (수) 필요", status: "완료" },
-  { id: "r10", no: "SEAL-202610-0019", module: "seal", title: "대표이사 직인 · 업무협약서", requester: "임서준", dept: "영업기획부", requestedAt: "2026-10-11", scheduledAt: "10.13 (화) 필요", status: "반려" },
-  { id: "r14", no: "SEAL-202610-0018", module: "seal", title: "법인인감 · 은행 여신 약정서", requester: "백승호", dept: "재무기획부", requestedAt: "2026-10-09", scheduledAt: "10.15 (목) 필요", status: "승인완료" },
-];
 
 /** 대시보드 KPI (샘플) */
 export const KPI = {
@@ -66,13 +59,6 @@ export const STATUS_BREAKDOWN = [
 
 
 
-/** 인장 종류별 사용 빈도 (최근 3개월 · 샘플) */
-export const SEAL_USAGE = [
-  { seal: "사용인감", count: 34 },
-  { seal: "법인인감", count: 27 },
-  { seal: "대표이사 직인", count: 15 },
-  { seal: "부서 직인", count: 9 },
-];
 
 export type Notice = { id: string; title: string; date: string; tag: "긴급" | "공지" | "안내" | "점검"; pinned?: boolean };
 

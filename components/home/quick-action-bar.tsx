@@ -12,7 +12,7 @@ import { MODULES } from "@/lib/modules";
 
 const QUICK_TAGS = [
   { label: "오늘 회의실 빈 시간", href: "/meeting" },
-  { label: "내 승인 대기", href: "/seal?status=승인대기#requests" },
+  { label: "인장 날인 신청", href: "/seal" },
   { label: "차량 이용 가능", href: "/vehicle" },
   { label: "사무용품 신청", href: "/ga" },
 ];

@@ -9,17 +9,18 @@ import { CountUp } from "@/components/ui/count-up";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useDemo } from "@/components/providers/demo-store";
-import { SEAL_USAGE } from "@/lib/data";
+import { SEAL_KINDS } from "@/lib/seal";
 import { todayStr } from "@/lib/shared";
 import { roomUtilization, vehicleUsage } from "@/lib/stats";
 
 export function OpsStats() {
-  const { meeting, rooms, vehicles } = useDemo();
+  const { meeting, rooms, vehicles, seal } = useDemo();
+  const sealUsage = SEAL_KINDS.map((k) => ({ seal: k.value, count: seal.filter((r) => r.seal_kind === k.value && r.status === "날인완료").length }));
   const util = roomUtilization(meeting, rooms, todayStr());
   const usage = vehicleUsage(vehicles);
   const avgRoom = util.length ? Math.round(util.reduce((s, r) => s + r.rate, 0) / util.length) : 0;
   const totalKm = usage.reduce((s, v) => s + v.km, 0);
-  const sealTotal = SEAL_USAGE.reduce((s, v) => s + v.count, 0);
+  const sealTotal = sealUsage.reduce((s, v) => s + v.count, 0);
 
   return (
     <section id="stats" className="mx-auto max-w-[1320px] px-4 py-16 md:px-8 md:py-20">
@@ -80,7 +81,7 @@ export function OpsStats() {
 
         <Reveal className="lg:col-span-6" delay={0.15}>
           <Card className="relative h-full overflow-hidden p-5 md:p-6">
-            <CardHeader title="인장 사용 빈도" description="최근 3개월 · 인장 종류별 날인 완료 건수" className="mb-5" />
+            <CardHeader title="인장 사용 빈도" description="인장 종류별 날인 완료 건수 (사용대장 기준)" className="mb-5" />
             <div className="grid items-center gap-6 sm:grid-cols-[150px_1fr]">
               <div className="relative mx-auto grid size-36 place-items-center rounded-full bg-gradient-to-br from-[#b79bff] to-[#5b35b0] text-white shadow-[0_20px_40px_-18px_rgb(91_53_176/0.7)]">
                 <div className="absolute inset-2 rounded-full border-2 border-dashed border-white/40" />
@@ -93,9 +94,9 @@ export function OpsStats() {
                 </div>
               </div>
               <Meters
-                items={SEAL_USAGE.map((s) => ({ label: s.seal, value: s.count }))}
+                items={sealUsage.map((s) => ({ label: s.seal, value: s.count }))}
                 color="linear-gradient(90deg, #b79bff, #8a5ce6)"
-                max={Math.max(...SEAL_USAGE.map((s) => s.count))}
+                max={Math.max(1, ...sealUsage.map((s) => s.count))}
                 unit="건"
               />
             </div>
