@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Siren } from "lucide-react";
+import { ChevronLeft, ChevronRight, Siren } from "lucide-react";
+import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/ui/badge";
 import type { WorkRequest } from "@/lib/data";
 import { MODULE_MAP } from "@/lib/modules";
@@ -13,13 +14,25 @@ export function RequestTable({
   showModule = true,
   compact = false,
   empty = "조건에 맞는 신청 내역이 없습니다.",
+  pageSize,
 }: {
   rows: WorkRequest[];
   showModule?: boolean;
   compact?: boolean;
   empty?: string;
+  /** 지정하면 이 개수씩 페이지로 나눠 표시 (15 / 20 전환 가능) */
+  pageSize?: number;
 }) {
-  if (rows.length === 0) {
+  const [size, setSize] = useState(pageSize ?? 0);
+  const [page, setPage] = useState(1);
+  const pages = size ? Math.max(1, Math.ceil(rows.length / size)) : 1;
+  // 조회 조건이 바뀌면 첫 페이지로
+  useEffect(() => setPage(1), [rows.length, size]);
+  const cur = Math.min(page, pages);
+  const all = rows;
+  rows = size ? all.slice((cur - 1) * size, cur * size) : all;
+
+  if (all.length === 0) {
     return <div className="rounded-2xl bg-canvas px-6 py-14 text-center text-sm text-ink-3">{empty}</div>;
   }
   return (
@@ -112,6 +125,48 @@ export function RequestTable({
           );
         })}
       </ul>
+
+      {size > 0 && all.length > 0 && <Pager total={all.length} size={size} page={cur} pages={pages} onPage={setPage} onSize={setSize} />}
     </>
+  );
+}
+
+function Pager({ total, size, page, pages, onPage, onSize }: { total: number; size: number; page: number; pages: number; onPage: (p: number) => void; onSize: (s: number) => void }) {
+  const from = (page - 1) * size + 1;
+  const to = Math.min(total, page * size);
+  // 현재 페이지 주변 최대 5개 번호
+  const start = Math.max(1, Math.min(page - 2, pages - 4));
+  const nums = Array.from({ length: Math.min(5, pages) }, (_, i) => start + i);
+  const btn = "grid size-9 place-items-center rounded-full text-sm font-bold transition disabled:pointer-events-none disabled:opacity-30";
+  return (
+    <div className="mt-4 flex flex-col items-center justify-between gap-3 border-t border-line pt-4 sm:flex-row">
+      <p className="text-xs text-ink-3 tabular">
+        전체 <b className="text-ink-2">{total}</b>건 중 {from}–{to}
+      </p>
+      <nav className="flex items-center gap-1" aria-label="페이지">
+        <button className={cn(btn, "text-ink-2 hover:bg-canvas")} onClick={() => onPage(page - 1)} disabled={page === 1} aria-label="이전 페이지">
+          <ChevronLeft className="size-4" />
+        </button>
+        {nums.map((n) => (
+          <button key={n} onClick={() => onPage(n)} aria-current={n === page ? "page" : undefined} className={cn(btn, "relative tabular", n === page ? "text-white" : "text-ink-2 hover:bg-canvas")}>
+            {n === page && <motion.span layoutId="pager-dot" className="absolute inset-0 rounded-full bg-brand-600" transition={{ type: "spring", damping: 30, stiffness: 400 }} />}
+            <span className="relative">{n}</span>
+          </button>
+        ))}
+        <button className={cn(btn, "text-ink-2 hover:bg-canvas")} onClick={() => onPage(page + 1)} disabled={page === pages} aria-label="다음 페이지">
+          <ChevronRight className="size-4" />
+        </button>
+      </nav>
+      <label className="flex items-center gap-2 text-xs text-ink-3">
+        페이지당
+        <select className="h-8 rounded-full border border-line bg-white px-2.5 text-xs font-bold text-ink-2" value={size} onChange={(e) => onSize(Number(e.target.value))}>
+          {[15, 20].map((n) => (
+            <option key={n} value={n}>
+              {n}개
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }

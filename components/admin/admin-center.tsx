@@ -10,6 +10,7 @@ import { StatusDonut } from "@/components/charts/status-donut";
 import { AdminGate } from "@/components/modules/admin-gate";
 import { RequestTable } from "@/components/modules/request-table";
 import { useDemo } from "@/components/providers/demo-store";
+import { AdminInsight } from "@/components/home/admin-insight";
 import { UserManagement } from "./user-management";
 import { useRequests } from "@/components/providers/requests-provider";
 import { Button } from "@/components/ui/button";
@@ -155,6 +156,10 @@ function AdminCenterBody() {
           })}
         </Stagger>
 
+        <Reveal>
+          <AdminInsight />
+        </Reveal>
+
         <div id="stats" className="grid scroll-mt-24 gap-5 lg:grid-cols-[1.6fr_1fr]">
           <Reveal>
             <Card className="h-full p-5 md:p-6">
@@ -208,7 +213,7 @@ function AdminCenterBody() {
                 ))}
               </select>
             </div>
-            <RequestTable rows={rows} />
+            <RequestTable rows={rows} pageSize={15} />
           </Card>
         </Reveal>
 

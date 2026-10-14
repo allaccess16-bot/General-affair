@@ -103,6 +103,7 @@ select public.t('직원: 남의 예약은 코드 없이 취소 불가', public.t
 select public.t('직원: 관리자 강제취소 불가', public.t_try($q$select meeting.admin_cancel_reservation((select id from meeting.reservations_public where status='reserved' limit 1))$q$) like 'NOT_ADMIN%');
 select public.t('직원: 회의실 운영중지 변경 불가(0건)', public.t_val($q$with u as (update meeting.rooms set active=false where id='13-L' returning 1) select count(*) from u$q$) = '0');
 select public.t('직원: 반복예약(권한 래퍼)', public.t_val($q$select meeting.create_recurring_reservations('13-L','권한반복','이직원','감사부',2,'2031-02-03','2031-02-14','{1,3}','10:00','11:00','')->>'status'$q$) = 'created');
+select public.t('장기예약은 원장 1건으로 저장(회차 4)', public.t_val($q$select count(*) || '/' || max(occurrence_count) from meeting.series_public where title='권한반복'$q$) = '1/4');
 select public.t('직원: 반복예약 작성자 기록', public.t_val($q$select count(*) from meeting.my_reservation_ids()$q$) = '5');
 select public.t('직원: 내부 함수 직접 호출 차단', public.t_try($q$select meeting.create_recurring_reservations_core('13-L','x','x','감사부',2,'2031-03-03','2031-03-03','{1}','10:00','11:00','')$q$) like 'permission denied%');
 
