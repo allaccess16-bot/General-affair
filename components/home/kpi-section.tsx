@@ -4,19 +4,28 @@ import { motion } from "framer-motion";
 import { CarFront, Inbox, Loader, Presentation, Stamp, type LucideIcon } from "lucide-react";
 import { CountUp } from "@/components/ui/count-up";
 import { Stagger, staggerItem } from "@/components/ui/reveal";
-import { KPI } from "@/lib/data";
+import { useDemo } from "@/components/providers/demo-store";
+import { useRequests } from "@/components/providers/requests-provider";
+import { seoulParts } from "@/lib/meeting";
+import { todayStr } from "@/lib/shared";
+import { coversDate } from "@/lib/vehicle";
 
 type Item = { label: string; value: number; unit: string; desc: string; icon: LucideIcon; color: string; delta: string };
 
-const ITEMS: Item[] = [
-  { label: "오늘 접수 업무", value: KPI.todayReceived, unit: "건", desc: "전 모듈 신규 접수", icon: Inbox, color: "var(--color-brand-600)", delta: "+6 전일 대비" },
-  { label: "처리 중", value: KPI.inProgress, unit: "건", desc: "담당자 배정 완료", icon: Loader, color: "var(--color-mod-ga)", delta: "평균 1.4일 소요" },
-  { label: "회의실 예약", value: KPI.meetingToday, unit: "건", desc: "오늘 확정된 회의", icon: Presentation, color: "var(--color-mod-meeting)", delta: "이용률 74%" },
-  { label: "차량 예약", value: KPI.vehicleToday, unit: "건", desc: "오늘 배차 일정", icon: CarFront, color: "var(--color-mod-vehicle)", delta: "가용 1대" },
-  { label: "인장 신청", value: KPI.sealPending, unit: "건", desc: "승인·날인 대기", icon: Stamp, color: "var(--color-mod-seal)", delta: "긴급 2건" },
-];
-
 export function KpiSection() {
+  const { requests } = useRequests();
+  const { meeting, vehicles } = useDemo();
+  const today = todayStr();
+  const todayMeeting = meeting.filter((r) => seoulParts(r.start_at).date === today && r.status !== "cancelled");
+  const todayVehicle = vehicles.filter((c) => (c.status === "승인" || c.status === "신청") && coversDate(c, today));
+  const sealOpen = requests.filter((r) => r.module === "seal" && (r.status === "승인대기" || r.status === "승인완료"));
+  const ITEMS: Item[] = [
+    { label: "오늘 접수 업무", value: requests.filter((r) => r.requestedAt === today).length, unit: "건", desc: "전 모듈 오늘 신청·예약", icon: Inbox, color: "var(--color-brand-600)", delta: "실시간" },
+    { label: "처리 중", value: requests.filter((r) => r.status === "진행중" || r.status === "접수").length, unit: "건", desc: "접수·진행 단계 업무", icon: Loader, color: "var(--color-mod-ga)", delta: "총무·회의실" },
+    { label: "회의실 예약", value: todayMeeting.length, unit: "건", desc: "오늘 회의실 예약", icon: Presentation, color: "var(--color-mod-meeting)", delta: `자동취소 ${todayMeeting.filter((r) => r.status === "no_show").length}` },
+    { label: "차량 예약", value: todayVehicle.length, unit: "건", desc: "오늘 배차 일정", icon: CarFront, color: "var(--color-mod-vehicle)", delta: `승인대기 ${vehicles.filter((c) => c.status === "신청").length}` },
+    { label: "인장 신청", value: sealOpen.length, unit: "건", desc: "승인·날인 대기", icon: Stamp, color: "var(--color-mod-seal)", delta: `긴급 ${sealOpen.filter((r) => r.urgent).length}` },
+  ];
   return (
     <section className="mx-auto max-w-[1320px] px-4 py-10 md:px-8" aria-label="오늘의 업무 현황">
       <Stagger className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5 lg:gap-4">

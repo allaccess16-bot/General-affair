@@ -5,6 +5,7 @@ import { Bell, LayoutDashboard, Menu, Plus, Search, ShieldCheck, X } from "lucid
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useDemo } from "@/components/providers/demo-store";
 import { useRequests } from "@/components/providers/requests-provider";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ export function SiteHeader() {
           <Button size="sm" className="hidden md:inline-flex" onClick={() => openRequest()}>
             <Plus className="size-4" /> 바로 신청
           </Button>
+          <RoleSwitch />
           <div className="hidden items-center gap-2.5 rounded-full border border-line bg-white py-1 pl-1 pr-3 2xl:flex">
             <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-brand-300 to-brand-600 text-xs font-bold text-white">
               홍
@@ -265,5 +267,25 @@ function GlobalSearch() {
         </ul>
       </Popover>
     </div>
+  );
+}
+
+/** 데모용 권한 전환 — 실서비스에서는 로그인 사용자 역할로 자동 결정 */
+function RoleSwitch() {
+  const { role, setRole, ready } = useDemo();
+  if (!ready) return null;
+  const admin = role === "admin";
+  return (
+    <button
+      onClick={() => setRole(admin ? "user" : "admin")}
+      title="데모: 일반 직원 / 관리자 화면 전환"
+      className={cn(
+        "flex h-10 items-center gap-1.5 rounded-full border px-3 text-xs font-bold transition",
+        admin ? "border-brand-600 bg-brand-600 text-white" : "border-line bg-white text-ink-2 hover:border-brand-200",
+      )}
+    >
+      <ShieldCheck className="size-4" />
+      <span className="hidden sm:inline">{admin ? "관리자" : "일반 직원"}</span>
+    </button>
   );
 }

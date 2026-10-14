@@ -8,11 +8,17 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { CountUp } from "@/components/ui/count-up";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { ROOM_UTILIZATION, SEAL_USAGE, VEHICLE_USAGE } from "@/lib/data";
+import { useDemo } from "@/components/providers/demo-store";
+import { SEAL_USAGE } from "@/lib/data";
+import { todayStr } from "@/lib/shared";
+import { roomUtilization, vehicleUsage } from "@/lib/stats";
 
 export function OpsStats() {
-  const avgRoom = Math.round(ROOM_UTILIZATION.reduce((s, r) => s + r.rate, 0) / ROOM_UTILIZATION.length);
-  const totalKm = VEHICLE_USAGE.reduce((s, v) => s + v.km, 0);
+  const { meeting, rooms, vehicles } = useDemo();
+  const util = roomUtilization(meeting, rooms, todayStr());
+  const usage = vehicleUsage(vehicles);
+  const avgRoom = util.length ? Math.round(util.reduce((s, r) => s + r.rate, 0) / util.length) : 0;
+  const totalKm = usage.reduce((s, v) => s + v.km, 0);
   const sealTotal = SEAL_USAGE.reduce((s, v) => s + v.count, 0);
 
   return (
@@ -26,7 +32,7 @@ export function OpsStats() {
       <div className="grid gap-5 lg:grid-cols-12">
         <Reveal className="lg:col-span-7">
           <Card className="h-full p-5 md:p-6">
-            <CardHeader title="월별 신청 현황" description="모듈별 누적 · 최근 6개월" className="mb-4" />
+            <CardHeader title="월별 신청 현황" description="모듈별 누적 · 최근 6개월 (샘플 추이)" className="mb-4" />
             <MonthlyStacked height={270} />
           </Card>
         </Reveal>
@@ -34,8 +40,8 @@ export function OpsStats() {
         <Reveal className="lg:col-span-5" delay={0.1}>
           <Card className="h-full p-5 md:p-6">
             <CardHeader
-              title="회의실 이용률"
-              description="이번 달 업무시간(09–18시) 대비"
+              title="회의실 예약률"
+              description="오늘 업무시간(08–20시) 대비 · 상위 7개 회의실"
               action={
                 <span className="flex items-center gap-1 rounded-full bg-[color:var(--color-mod-meeting)]/10 px-2.5 py-1 text-xs font-bold text-[#a35f0a]">
                   <Gauge className="size-3.5" /> 평균 {avgRoom}%
@@ -44,7 +50,7 @@ export function OpsStats() {
               className="mb-5"
             />
             <Meters
-              items={ROOM_UTILIZATION.map((r) => ({ label: r.room, sub: `${r.floor} · ${r.seats}인`, value: r.rate }))}
+              items={util.slice(0, 7).map((r) => ({ label: r.room.name, sub: `${r.room.floor}F · ${r.room.capacity}인`, value: r.rate }))}
               color="linear-gradient(90deg, #f3b766, #e08a1e)"
               max={100}
               unit="%"
@@ -56,7 +62,7 @@ export function OpsStats() {
           <Card className="h-full p-5 md:p-6">
             <CardHeader
               title="차량 이용 현황"
-              description="이번 달 차량별 운행 횟수"
+              description="차량별 이용 건수 (반려 제외)"
               action={
                 <div className="text-right">
                   <p className="text-[11px] font-semibold text-ink-3">총 주행거리</p>
@@ -68,7 +74,7 @@ export function OpsStats() {
               }
               className="mb-2"
             />
-            <VehicleBars height={210} />
+            <VehicleBars data={usage} height={210} />
           </Card>
         </Reveal>
 

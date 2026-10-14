@@ -102,8 +102,8 @@ export function HeroVisual() {
             <Presentation className="size-4" />
             <span className="text-[11px] font-bold">회의실 예약 확정</span>
           </div>
-          <p className="mt-2 text-sm font-bold">대회의실 A</p>
-          <p className="text-[11px] text-ink-3">오늘 14:00 – 16:00 · 12명</p>
+          <p className="mt-2 text-sm font-bold">13층 대회의실</p>
+          <p className="text-[11px] text-ink-3">오늘 14:00 – 16:00 · 20명</p>
           <div className="mt-3 flex gap-1">
             {Array.from({ length: 10 }).map((_, i) => (
               <span
@@ -130,7 +130,7 @@ export function HeroVisual() {
                 strokeWidth="5"
                 strokeLinecap="round"
                 initial={{ pathLength: 0 }}
-                animate={{ pathLength: 0.75 }}
+                animate={{ pathLength: 0.67 }}
                 transition={{ duration: 1.4, ease: EASE, delay: 1.3 }}
               />
             </svg>
@@ -138,8 +138,8 @@ export function HeroVisual() {
               <p className="flex items-center gap-1 text-[11px] font-bold text-[color:var(--color-mod-vehicle)]">
                 <CarFront className="size-3.5" /> 차량 가동률
               </p>
-              <p className="text-xl font-extrabold tabular">75%</p>
-              <p className="text-[11px] text-ink-3">4대 중 3대 운행</p>
+              <p className="text-xl font-extrabold tabular">67%</p>
+              <p className="text-[11px] text-ink-3">K5 3대 중 2대 운행</p>
             </div>
           </div>
         </div>
