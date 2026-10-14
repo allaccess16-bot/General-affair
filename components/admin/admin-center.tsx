@@ -7,7 +7,10 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { MonthlyStacked } from "@/components/charts/monthly-stacked";
 import { StatusDonut } from "@/components/charts/status-donut";
+import { AdminGate } from "@/components/modules/admin-gate";
 import { RequestTable } from "@/components/modules/request-table";
+import { useDemo } from "@/components/providers/demo-store";
+import { UserManagement } from "./user-management";
 import { useRequests } from "@/components/providers/requests-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -37,6 +40,21 @@ function downloadCsv(rows: WorkRequest[]) {
 }
 
 export function AdminCenter() {
+  const { live, role } = useDemo();
+  // 실DB: 업무 관리자 권한이 하나라도 있어야 열림 (데모는 기존처럼 누구나 둘러보기)
+  if (live && role !== "admin")
+    return (
+      <div className="mx-auto max-w-[760px] px-4 py-16">
+        <AdminGate any title="관리자 센터는 관리자만 이용할 수 있습니다">
+          <></>
+        </AdminGate>
+      </div>
+    );
+  return <AdminCenterBody />;
+}
+
+function AdminCenterBody() {
+  const { live } = useDemo();
   const params = useSearchParams();
   const { requests } = useRequests();
   const [period, setPeriod] = useState("이번 달");
@@ -194,7 +212,12 @@ export function AdminCenter() {
           </Card>
         </Reveal>
 
-        <div className="grid gap-5 lg:grid-cols-[1fr_1.4fr]">
+        {live && (
+          <Reveal>
+            <UserManagement />
+          </Reveal>
+        )}
+        <div className={cn("grid gap-5 lg:grid-cols-[1fr_1.4fr]", live && "hidden")}>
           <Reveal>
             <Card className="h-full p-5 md:p-6">
               <CardHeader title="사용자 · 권한 관리" description="직원·부서 정보와 역할 권한" className="mb-5" />

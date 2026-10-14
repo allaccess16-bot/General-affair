@@ -26,6 +26,8 @@ import { seedGa, seedMeeting, seedRooms, seedSeal, seedVehicles } from "@/lib/se
 import { addDays, nowIso, todayStr, uid } from "@/lib/shared";
 import { findConflicts, resEnd, resStart, type CompletionInput, type VehicleInput, type VehicleReservation, type VehicleStatus } from "@/lib/vehicle";
 import * as live from "@/lib/db/live";
+import type { ModuleKey } from "@/lib/modules";
+import { useAuth } from "./auth-provider";
 
 const LIVE_MINE_KEY = "hanaworks-live-my-meeting";
 
@@ -62,6 +64,10 @@ type Ctx = State & {
   reload: () => Promise<void>;
   role: Role;
   setRole: (r: Role) => void;
+  /** 모듈 관리자 여부 — 실DB: 로그인 직원 권한 / 데모: 관리자 전환 */
+  isAdmin: (module?: ModuleKey) => boolean;
+  /** 로그인 직원 (실DB 모드). 신청서 자동 입력·본인 확인에 사용 */
+  me: { id: string; name: string; department: string; contact: string } | null;
   notify: (msg: string, error?: boolean) => void;
   resetDemo: () => void;
   gaCreate: (input: GaRequestInput) => P;
@@ -109,7 +115,9 @@ function initial(): State {
 export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<State>({ ga: [], vehicles: [], meeting: [], rooms: [], myMeeting: [], seal: [] });
   const [ready, setReady] = useState(false);
-  const [role, setRoleState] = useState<Role>("user");
+  const [roleState, setRoleState] = useState<Role>("user");
+  const auth = useAuth();
+  const role: Role = live.LIVE ? (auth.anyAdmin ? "admin" : "user") : roleState;
   const [toast, setToast] = useState<{ msg: string; error: boolean; key: number } | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -119,8 +127,13 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
   const reload = useCallback(async () => {
     if (!live.LIVE) return;
     try {
-      const data = await live.loadAll();
-      setState((s) => ({ ...s, ...data }));
+      const [data, mineIds] = await Promise.all([live.loadAll(), live.myMeetingIds().catch(() => [] as string[])]);
+      setState((s) => {
+        // 로그인 계정으로 만든 예약은 예약코드 없이도 '내 예약'에 표시
+        const known = new Set(s.myMeeting.map((m) => m.id));
+        const extra = mineIds.filter((id) => !known.has(id)).map((id) => ({ id, code: "" }));
+        return { ...s, ...data, myMeeting: extra.length ? [...s.myMeeting, ...extra] : s.myMeeting };
+      });
       setLoadError(null);
     } catch (e) {
       setLoadError(live.friendly(e));
@@ -499,9 +512,14 @@ export function DemoStoreProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, reload, addMine]);
 
+  const authIsAdmin = auth.isAdmin;
+  const isAdmin = useCallback((module?: ModuleKey) => (live.LIVE ? authIsAdmin(module) : role === "admin"), [authIsAdmin, role]);
+  const p = auth.profile;
+  const me = useMemo(() => (p ? { id: p.id, name: p.name, department: p.department, contact: p.contact } : null), [p]);
+
   const value = useMemo<Ctx>(
-    () => ({ ...state, ready, live: live.LIVE, loadError, reload, role, setRole, notify, resetDemo, ...api }),
-    [state, ready, loadError, reload, role, setRole, notify, resetDemo, api],
+    () => ({ ...state, ready, live: live.LIVE, loadError, reload, role, setRole, isAdmin, me, notify, resetDemo, ...api }),
+    [state, ready, loadError, reload, role, setRole, isAdmin, me, notify, resetDemo, api],
   );
 
   return (

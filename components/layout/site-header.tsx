@@ -1,11 +1,13 @@
 "use client";
 
 import { AnimatePresence, motion, useMotionValueEvent, useScroll, useSpring } from "framer-motion";
-import { Bell, LayoutDashboard, Menu, Plus, Search, ShieldCheck, X } from "lucide-react";
+import { Bell, LayoutDashboard, LogOut, Menu, Plus, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/components/providers/auth-provider";
 import { useDemo } from "@/components/providers/demo-store";
+import { ProfileModal } from "@/components/auth/profile-modal";
 import { useRequests } from "@/components/providers/requests-provider";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,15 +80,6 @@ export function SiteHeader() {
             <Plus className="size-4" /> 바로 신청
           </Button>
           <RoleSwitch />
-          <div className="hidden items-center gap-2.5 rounded-full border border-line bg-white py-1 pl-1 pr-3 2xl:flex">
-            <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-brand-300 to-brand-600 text-xs font-bold text-white">
-              홍
-            </span>
-            <span className="text-left leading-tight">
-              <span className="block text-[13px] font-bold">홍길동 과장</span>
-              <span className="block text-[11px] text-ink-3">경영지원부</span>
-            </span>
-          </div>
           <button
             className="grid size-10 place-items-center rounded-full border border-line bg-white xl:hidden"
             onClick={() => setMobileOpen((v) => !v)}
@@ -277,10 +270,11 @@ function GlobalSearch() {
   );
 }
 
-/** 데모용 권한 전환 — 실서비스에서는 로그인 사용자 역할로 자동 결정 */
+/** 데모: 권한 전환 버튼 / 실DB: 로그인 직원 메뉴 */
 function RoleSwitch() {
   const { role, setRole, ready, live, loadError } = useDemo();
   if (!ready) return null;
+  if (live) return <UserMenu loadError={loadError} />;
   const admin = role === "admin";
   return (
     <>
@@ -306,5 +300,54 @@ function RoleSwitch() {
       <span className="hidden sm:inline">{admin ? "관리자" : "일반 직원"}</span>
     </button>
     </>
+  );
+}
+
+const MODULE_LABEL: Record<string, string> = { ga: "총무", vehicle: "차량", meeting: "회의실", seal: "인장" };
+
+function UserMenu({ loadError }: { loadError: string | null }) {
+  const { profile, signOut } = useAuth();
+  const { open, setOpen, ref } = usePopover();
+  const [edit, setEdit] = useState(false);
+  if (!profile) return null;
+  const roleLabel =
+    profile.role !== "admin" ? "일반 직원" : profile.admin_modules.length === 0 ? "최고관리자" : `${profile.admin_modules.map((m) => MODULE_LABEL[m]).join("·")} 관리자`;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="내 계정"
+        className="flex h-10 items-center gap-2 rounded-full border border-line bg-white py-1 pl-1 pr-1 transition hover:border-brand-200 sm:pr-3"
+      >
+        <span className="relative grid size-8 place-items-center rounded-full bg-gradient-to-br from-brand-300 to-brand-600 text-xs font-bold text-white">
+          {profile.name.slice(0, 1)}
+          <i className={cn("absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-white", loadError ? "bg-rose-500" : "bg-brand-400")} title={loadError ? `DB 연결 오류: ${loadError}` : "새 통합 DB에 연결됨"} />
+        </span>
+        <span className="hidden text-left leading-tight sm:block">
+          <span className="block text-[13px] font-bold">{profile.name}</span>
+          <span className="block text-[11px] text-ink-3">{roleLabel}</span>
+        </span>
+      </button>
+      <Popover open={open} className="w-[min(300px,calc(100vw-32px))]">
+        <div className="border-b border-line px-5 py-4">
+          <p className="font-bold">{profile.name}</p>
+          <p className="text-xs text-ink-3">{profile.department} · {profile.email}</p>
+          <span className={cn("mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold", profile.role === "admin" ? "bg-brand-50 text-brand-700" : "bg-canvas text-ink-2")}>
+            <ShieldCheck className="size-3.5" /> {roleLabel}
+          </span>
+          {loadError && <p className="mt-2 text-xs font-semibold text-rose-600">DB 연결 오류: {loadError}</p>}
+        </div>
+        <div className="p-2">
+          <button onClick={() => (setOpen(false), setEdit(true))} className="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-semibold hover:bg-canvas">
+            <UserRound className="size-4 text-ink-3" /> 내 정보 수정
+          </button>
+          <button onClick={signOut} className="flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50">
+            <LogOut className="size-4" /> 로그아웃
+          </button>
+        </div>
+      </Popover>
+      <ProfileModal open={edit} onClose={() => setEdit(false)} />
+    </div>
   );
 }

@@ -33,7 +33,8 @@ const dayLabel = (d: string) => {
 type Tab = "user" | "admin" | "stats";
 
 export function VehicleApp() {
-  const { vehicles, ready, role } = useDemo();
+  const { vehicles, ready, isAdmin } = useDemo();
+  const admin = isAdmin("vehicle");
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>("user");
   const [form, setForm] = useState<{ open: boolean; date?: string; vehicle?: string }>({ open: false });
@@ -73,19 +74,19 @@ export function VehicleApp() {
           onChange={setTab}
           items={[
             { value: "user", label: "배차신청 · 예약 현황" },
-            { value: "admin", label: "차량 배차 관리", locked: role !== "admin", badge: role === "admin" ? pending : undefined },
-            { value: "stats", label: "차량별 통계", locked: role !== "admin" },
+            { value: "admin", label: "차량 배차 관리", locked: !admin, badge: admin ? pending : undefined },
+            { value: "stats", label: "차량별 통계", locked: !admin },
           ]}
           className="w-fit max-w-full"
         />
         {tab === "user" && <VehicleUser onNew={(date, vehicle) => setForm({ open: true, date, vehicle })} />}
         {tab === "admin" && (
-          <AdminGate>
+          <AdminGate module="vehicle">
             <VehicleAdmin />
           </AdminGate>
         )}
         {tab === "stats" && (
-          <AdminGate>
+          <AdminGate module="vehicle">
             <VehicleStats />
           </AdminGate>
         )}

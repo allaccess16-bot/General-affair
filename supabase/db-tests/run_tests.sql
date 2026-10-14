@@ -15,6 +15,19 @@ end; $$;
 create or replace function pg_temp.ok(p_cond boolean, p_name text) returns void language plpgsql as $$
 begin if not p_cond then raise exception 'FAIL: %', p_name; end if; raise notice 'PASS: %', p_name; end; $$;
 
+-- 0010(로그인·권한) 적용 DB: 승인된 직원(인장 담당 관리자)으로 로그인한 상태에서 실행
+do $$
+declare v uuid;
+begin
+  if to_regclass('core.profiles') is not null then
+    insert into auth.users (email, raw_user_meta_data) values ('dbtest@test.local', '{"name":"DB테스트","department":"경영지원부"}')
+    on conflict (email) do nothing;
+    select id into v from auth.users where email = 'dbtest@test.local';
+    update core.profiles set status = 'active', role = 'admin', admin_modules = '{seal}' where id = v;
+    perform set_config('request.jwt.claims', json_build_object('sub', v, 'role', 'authenticated')::text, false);
+  end if;
+end $$;
+
 -- ---------- 공통 ----------
 select pg_temp.ok(core.normalize_department('정보보호지원팀') = '정보보호지원부', '부서명 정규화: 정보보호지원팀 → 정보보호지원부');
 select pg_temp.ok(core.normalize_department('정보보호지원') = '정보보호지원부', '부서명 정규화: 정보보호지원 → 정보보호지원부');
@@ -33,6 +46,8 @@ select pg_temp.expect_error($$update meeting.reservations set start_at='2030-03-
 -- 취소하면 같은 시간 재예약 가능
 select meeting.manage_reservation((select id from meeting.reservations where title='주간회의'), 'code0001', 'cancel');
 select pg_temp.ok(meeting.create_reservation('12-3','취소 후 재예약','김테스트','감사부',2,'2030-03-04 10:00+09','2030-03-04 11:00+09','CODE0005') is not null, '회의실: 취소된 시간은 다시 예약 가능');
+-- 다른 사람이 만든 예약으로 가정 (본인 예약은 코드 없이 관리 가능)
+update meeting.reservations set created_by = null where title = '연속';
 select pg_temp.expect_error($$select meeting.manage_reservation((select id from meeting.reservations where title='연속'), 'WRONG', 'cancel')$$, 'INVALID_CODE%', '회의실: 예약코드 불일치 시 취소 차단');
 
 -- 반복예약 all-or-nothing

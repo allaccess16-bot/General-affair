@@ -3,6 +3,8 @@ import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { WelcomeIntro } from "@/components/layout/welcome-intro";
+import { AuthGate } from "@/components/auth/auth-gate";
+import { AuthProvider } from "@/components/providers/auth-provider";
 import { DemoStoreProvider } from "@/components/providers/demo-store";
 import { RequestsProvider } from "@/components/providers/requests-provider";
 import { INTRO_BOOT_SCRIPT } from "@/lib/intro";
@@ -28,15 +30,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-dvh overflow-x-hidden">
-        <DemoStoreProvider>
-          <RequestsProvider>
-            <WelcomeIntro />
-            <SiteHeader />
-            <main>{children}</main>
-            <SiteFooter />
-            <MobileTabBar />
-          </RequestsProvider>
-        </DemoStoreProvider>
+        <AuthProvider>
+          <WelcomeIntro />
+          <AuthGate>
+            <DemoStoreProvider>
+              <RequestsProvider>
+                <SiteHeader />
+                <main>{children}</main>
+                <SiteFooter />
+                <MobileTabBar />
+              </RequestsProvider>
+            </DemoStoreProvider>
+          </AuthGate>
+        </AuthProvider>
       </body>
     </html>
   );

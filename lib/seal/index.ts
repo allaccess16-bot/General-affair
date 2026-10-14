@@ -57,6 +57,8 @@ export type SealRequest = {
   certificates_issued?: boolean;
   history: SealHistory[];
   created_at: string;
+  /** 작성한 직원 (로그인 도입 이후 건) */
+  created_by?: string | null;
   updated_at: string;
 };
 

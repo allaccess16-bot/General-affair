@@ -30,7 +30,8 @@ export const GA_STATUS_STYLE: Record<GaStatus, string> = {
 type Tab = "user" | "admin" | "stats";
 
 export function GaApp() {
-  const { ga, ready, role } = useDemo();
+  const { ga, ready, isAdmin } = useDemo();
+  const admin = isAdmin("ga");
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>("user");
   const [formOpen, setFormOpen] = useState(false);
@@ -63,19 +64,19 @@ export function GaApp() {
           onChange={setTab}
           items={[
             { value: "user", label: "업무요청 · 내 요청 조회" },
-            { value: "admin", label: "요청 관리", locked: role !== "admin", badge: role === "admin" ? todo : undefined },
-            { value: "stats", label: "통계", locked: role !== "admin" },
+            { value: "admin", label: "요청 관리", locked: !admin, badge: admin ? todo : undefined },
+            { value: "stats", label: "통계", locked: !admin },
           ]}
           className="w-fit max-w-full"
         />
         {tab === "user" && <GaUser onNew={() => setFormOpen(true)} />}
         {tab === "admin" && (
-          <AdminGate>
+          <AdminGate module="ga">
             <GaAdmin />
           </AdminGate>
         )}
         {tab === "stats" && (
-          <AdminGate>
+          <AdminGate module="ga">
             <GaStats />
           </AdminGate>
         )}
@@ -239,7 +240,8 @@ function Box({ label, children }: { label: string; children: React.ReactNode }) 
 
 /** 내 요청 수정 — 기존과 동일하게 수정 비밀번호 확인 후 제목·상세·위치만 변경 */
 function GaEditModal({ r, onClose }: { r: GaRequest | null; onClose: () => void }) {
-  const { gaEdit, notify, live } = useDemo();
+  const { gaEdit, notify, live, me, isAdmin } = useDemo();
+  const needPw = !(me && r && (r.created_by === me.id || isAdmin("ga")));
   const [pw, setPw] = useState("");
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -253,7 +255,7 @@ function GaEditModal({ r, onClose }: { r: GaRequest | null; onClose: () => void 
   }, [r]);
   const submit = async () => {
     if (!r) return;
-    if (!pw) return notify("수정 비밀번호를 입력해주세요.", true);
+    if (needPw && !pw) return notify("수정 비밀번호를 입력해주세요.", true);
     if (!title.trim() || !desc.trim() || !loc.trim()) return notify("제목, 상세 내용, 요청 위치를 모두 입력해주세요.", true);
     // 비밀번호 확인은 저장소(실DB 모드에서는 서버 함수 ga.edit_request)에서 수행
     const res = await gaEdit(r.id, pw, { title: title.trim(), description: desc.trim(), location: loc.trim() });
@@ -264,9 +266,11 @@ function GaEditModal({ r, onClose }: { r: GaRequest | null; onClose: () => void 
   return (
     <Modal open={!!r} onClose={onClose} eyebrow="EDIT" title="내 요청 수정" tone="plain" footer={<Button className="w-full" onClick={submit}>수정 반영</Button>}>
       <div className="space-y-4">
-        <Field label="수정 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."}>
-          <input type="password" className="input" placeholder="작성 시 입력한 수정 비밀번호" value={pw} onChange={(e) => setPw(e.target.value)} />
-        </Field>
+        {needPw && (
+          <Field label="수정 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."}>
+            <input type="password" className="input" placeholder="작성 시 입력한 수정 비밀번호" value={pw} onChange={(e) => setPw(e.target.value)} />
+          </Field>
+        )}
         <Field label="요청 제목">
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
