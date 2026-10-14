@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ResetDemoButton } from "./reset-demo-button";
 import { MODULES } from "@/lib/modules";
 import { Logo } from "./logo";
 
@@ -30,7 +31,7 @@ export function SiteFooter() {
       <div className="border-t border-line">
         <div className="mx-auto flex max-w-[1320px] flex-col gap-2 px-4 py-6 text-xs text-ink-3 md:flex-row md:justify-between md:px-8">
           <p>© 2026 하나생명 경영지원부 · 디자인 프로토타입 (샘플 데이터)</p>
-          <p>개인정보 처리방침 · 이용 가이드 · 시스템 문의</p>
+          <p className="flex items-center gap-3">개인정보 처리방침 · 이용 가이드 · 시스템 문의 <ResetDemoButton /></p>
         </div>
       </div>
     </footer>

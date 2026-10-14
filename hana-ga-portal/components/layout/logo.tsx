@@ -15,7 +15,7 @@ export function Logo({ className, inverted = false }: { className?: string; inve
         <span className={cn("block text-[17px] font-extrabold tracking-tight", inverted ? "text-white" : "text-ink")}>
           HANA WORKS
         </span>
-        <span className={cn("mt-1 block text-[11px] font-medium tracking-wide", inverted ? "text-brand-100" : "text-ink-3")}>
+        <span className={cn("mt-1 hidden text-[11px] font-medium tracking-wide sm:block", inverted ? "text-brand-100" : "text-ink-3")}>
           총무 통합 업무 지원 시스템
         </span>
       </span>

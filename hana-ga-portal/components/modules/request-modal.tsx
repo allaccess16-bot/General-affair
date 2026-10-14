@@ -12,8 +12,8 @@ type Submit = (r: Pick<WorkRequest, "module" | "title" | "dept" | "scheduledAt" 
 
 const TITLE_HINT: Record<ModuleKey, string> = {
   ga: "예) 4층 복합기 토너 교체",
-  vehicle: "예) 카니발 · 고객사 방문",
-  meeting: "예) 중회의실 A · 주간 회의",
+  vehicle: "예) K5 191호8366 · 고객사 방문",
+  meeting: "예) 회의실 13-4 · 주간 회의",
   seal: "예) 법인인감 · 용역 계약서",
 };
 
@@ -22,13 +22,15 @@ export function RequestModal({
   initialModule,
   onClose,
   onSubmit,
+  onNavigate,
 }: {
   open: boolean;
   initialModule?: ModuleKey;
   onClose: () => void;
   onSubmit: Submit;
+  onNavigate: (m: ModuleKey) => void;
 }) {
-  const [module, setModule] = useState<ModuleKey>(initialModule ?? "ga");
+  const [module, setModule] = useState<ModuleKey>(initialModule ?? "seal");
   const [title, setTitle] = useState("");
   const [dept, setDept] = useState(DEPARTMENTS[0]);
   const [date, setDate] = useState("");
@@ -37,7 +39,7 @@ export function RequestModal({
 
   useEffect(() => {
     if (!open) return;
-    setModule(initialModule ?? "ga");
+    setModule(initialModule ?? "seal");
     setTitle("");
     setDate("");
     setUrgent(false);
@@ -143,6 +145,27 @@ export function RequestModal({
                   </div>
                 </fieldset>
 
+                {module !== "seal" ? (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl bg-canvas px-4 py-4 text-sm leading-relaxed text-ink-2">
+                      <b className="text-ink">{mod.name}</b>은(는) 기존 시스템과 같은 항목·검증 규칙을 가진 전용 신청서를 사용합니다.
+                      <br />
+                      {module === "vehicle" && "차량·사용 일시를 고르면 겹치는 예약을 바로 확인해 드립니다."}
+                      {module === "meeting" && "날짜·시간·인원을 먼저 고르면 예약 가능한 회의실만 보여드립니다."}
+                      {module === "ga" && "요청 위치·카테고리·긴급도와 수정 비밀번호를 함께 입력합니다."}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
+                        취소
+                      </Button>
+                      <Button type="button" className="flex-[2]" onClick={() => onNavigate(module)}>
+                        {mod.requestLabel} 신청서 열기
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+
                 <Field label={mod.key === "seal" ? "대상 문서 및 인장" : "신청 제목"}>
                   <input
                     required
@@ -189,6 +212,8 @@ export function RequestModal({
                     {mod.requestLabel} 제출
                   </Button>
                 </div>
+                  </>
+                )}
               </form>
             )}
           </motion.div>

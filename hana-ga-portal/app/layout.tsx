@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { DemoStoreProvider } from "@/components/providers/demo-store";
 import { RequestsProvider } from "@/components/providers/requests-provider";
 import "./globals.css";
 
@@ -24,12 +25,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-dvh overflow-x-hidden">
-        <RequestsProvider>
-          <SiteHeader />
-          <main>{children}</main>
-          <SiteFooter />
-          <MobileTabBar />
-        </RequestsProvider>
+        <DemoStoreProvider>
+          <RequestsProvider>
+            <SiteHeader />
+            <main>{children}</main>
+            <SiteFooter />
+            <MobileTabBar />
+          </RequestsProvider>
+        </DemoStoreProvider>
       </body>
     </html>
   );

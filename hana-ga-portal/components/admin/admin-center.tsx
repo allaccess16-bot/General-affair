@@ -15,6 +15,7 @@ import { CountUp } from "@/components/ui/count-up";
 import { Reveal, Stagger, staggerItem } from "@/components/ui/reveal";
 import { DEPARTMENTS, STATUSES, type WorkRequest } from "@/lib/data";
 import { MODULES, MODULE_MAP } from "@/lib/modules";
+import { saveBlob } from "@/lib/shared";
 import { cn } from "@/lib/utils";
 
 const AUDIT = [
@@ -32,10 +33,7 @@ function downloadCsv(rows: WorkRequest[]) {
   const head = ["신청번호", "업무", "신청 내용", "신청자", "부서", "신청일", "일정", "상태", "긴급"];
   const body = rows.map((r) => [r.no, MODULE_MAP[r.module].name, r.title, r.requester, r.dept, r.requestedAt, r.scheduledAt, r.status, r.urgent ? "Y" : ""]);
   const csv = [head, ...body].map((line) => line.map((v) => `"${String(v).replaceAll('"', '""')}"`).join(",")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-  const a = Object.assign(document.createElement("a"), { href: url, download: `업무신청현황_${new Date().toISOString().slice(0, 10)}.csv` });
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlob(`업무신청현황_${new Date().toISOString().slice(0, 10)}.csv`, new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }));
 }
 
 export function AdminCenter() {

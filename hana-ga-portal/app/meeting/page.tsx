@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { ModulePage } from "@/components/modules/module-page";
+import { MeetingApp } from "@/components/meeting/meeting-app";
 
 export const metadata: Metadata = { title: "회의실 예약 · HANA WORKS" };
 
 export default function Page() {
   return (
     <Suspense>
-      <ModulePage moduleKey="meeting" />
+      <MeetingApp />
     </Suspense>
   );
 }
