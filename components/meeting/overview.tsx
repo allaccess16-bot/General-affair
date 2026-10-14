@@ -258,7 +258,7 @@ export function NowBoard({ rooms, idx, onBook, onDetail }: { rooms: Room[]; idx:
                       key={room.id}
                       whileHover={{ y: -3 }}
                       onClick={() => (st.kind === "free" ? onBook({ roomId: room.id, date: today, start: slotStart }) : st.current ? onDetail(st.current) : st.next ? onDetail(st.next) : undefined)}
-                      className={cn("relative flex min-h-[112px] flex-col rounded-2xl border p-3 text-left shadow-sm transition-shadow hover:shadow-card", S.tile)}
+                      className={cn("relative flex min-h-[128px] min-w-0 flex-col rounded-2xl border p-3 text-left shadow-sm transition-shadow hover:shadow-card", S.tile)}
                     >
                       <span className="absolute inset-y-3 left-0 w-1 rounded-r-full" style={{ background: roomColor(room.id) }} />
                       <span className="flex items-center justify-between gap-1 pl-1.5">
@@ -267,6 +267,10 @@ export function NowBoard({ rooms, idx, onBook, onDetail }: { rooms: Room[]; idx:
                           <Users className="size-3" />
                           {room.capacity}
                         </span>
+                      </span>
+                      <span className="flex items-center gap-1 truncate pl-1.5 text-[11px] text-ink-3" title={room.location}>
+                        <MapPin className="size-3 shrink-0" />
+                        <span className="truncate">{room.location}</span>
                       </span>
                       <span className={cn("mt-1.5 flex items-center gap-1.5 pl-1.5 text-sm font-extrabold", S.text)}>
                         <i className={cn("size-2 rounded-full", S.dot, st.kind === "busy" && "animate-pulse")} />
@@ -418,6 +422,9 @@ export function DayBoard({
                   </p>
                   <p className="pl-4 text-[11px] text-ink-3">
                     {room.floor}F · {room.capacity}인{!room.active && " · 중지"}
+                  </p>
+                  <p className="truncate pl-4 text-[11px] text-ink-3" title={room.location}>
+                    {room.location}
                   </p>
                 </div>
                 <div className="relative h-[62px] flex-1">

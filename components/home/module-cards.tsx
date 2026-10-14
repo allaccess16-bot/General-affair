@@ -33,7 +33,13 @@ export function ModuleCards() {
               variants={staggerItem}
               whileHover={{ y: -8 }}
               transition={{ type: "spring", damping: 20, stiffness: 260 }}
-              className="group flex flex-col overflow-hidden rounded-[28px] border border-line bg-white shadow-card transition-shadow duration-300 hover:shadow-lift"
+              onMouseMove={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                e.currentTarget.style.setProperty("--mx", `${e.clientX - r.left}px`);
+                e.currentTarget.style.setProperty("--my", `${e.clientY - r.top}px`);
+              }}
+              style={{ "--spot": m.color } as React.CSSProperties}
+              className="spotlight group relative flex flex-col overflow-hidden rounded-[28px] border border-line bg-white shadow-card transition-shadow duration-300 hover:shadow-lift"
             >
               <div className="relative">
                 <ModuleArt module={m.key} className="h-44 transition-transform duration-700 group-hover:scale-[1.04]" />

@@ -5,6 +5,7 @@ import { ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
 import { buttonClass } from "@/components/ui/button";
 import Link from "next/link";
 import { useRequests } from "@/components/providers/requests-provider";
+import { useIntroReplayKey } from "@/lib/use-intro";
 import { MODULES } from "@/lib/modules";
 import { HeroVisual } from "./hero-visual";
 import { QuickActionBar } from "./quick-action-bar";
@@ -18,6 +19,7 @@ const fadeUp = (delay: number) => ({
 
 export function Hero() {
   const { openRequest } = useRequests();
+  const replay = useIntroReplayKey();
   return (
     <section className="relative -mt-[72px] overflow-hidden pt-[72px]">
       {/* 배경: 연한 그린 그라데이션 + 블러 장식 */}
@@ -29,7 +31,7 @@ export function Hero() {
         <div className="absolute bottom-0 left-1/3 size-[300px] rounded-full bg-brand-100/70 blur-[100px]" />
       </div>
 
-      <div className="mx-auto grid max-w-[1320px] items-center gap-10 px-4 pb-10 pt-10 md:px-8 lg:grid-cols-[1.02fr_1fr] lg:gap-6 lg:pt-16">
+      <div key={replay} className="mx-auto grid max-w-[1320px] items-center gap-10 px-4 pb-10 pt-10 md:px-8 lg:grid-cols-[1.02fr_1fr] lg:gap-6 lg:pt-16">
         <div>
           <motion.p
             {...fadeUp(0.05)}
@@ -38,14 +40,20 @@ export function Hero() {
             <Sparkles className="size-3.5" /> 하나생명 경영지원부 통합 업무 포털
           </motion.p>
 
-          <motion.h1
-            {...fadeUp(0.15)}
-            className="mt-6 text-[40px] font-extrabold leading-[1.12] tracking-[-0.03em] text-ink sm:text-[54px] lg:text-[64px]"
-          >
-            총무 통합
-            <br />
-            <span className="text-gradient">업무 지원</span> 시스템
-          </motion.h1>
+          <h1 className="mt-6 text-[40px] font-extrabold leading-[1.12] tracking-[-0.03em] text-ink sm:text-[54px] lg:text-[64px]">
+            {[<>총무 통합</>, <><span className="text-gradient">업무 지원</span> 시스템</>].map((line, i) => (
+              <span key={i} className="block overflow-hidden pb-[0.06em]">
+                <motion.span
+                  className="block"
+                  initial={{ y: "110%" }}
+                  animate={{ y: "0%" }}
+                  transition={{ duration: 1, ease: EASE, delay: 0.12 + i * 0.12 }}
+                >
+                  {line}
+                </motion.span>
+              </span>
+            ))}
+          </h1>
 
           <motion.p {...fadeUp(0.28)} className="mt-6 max-w-[520px] text-[17px] leading-relaxed text-ink-2 md:text-lg">
             업무 신청부터 차량·회의실 예약, 인장 날인 승인과 관리까지.
@@ -54,7 +62,7 @@ export function Hero() {
           </motion.p>
 
           <motion.div {...fadeUp(0.4)} className="mt-9 flex flex-wrap gap-3">
-            <button onClick={() => openRequest()} className={buttonClass("primary", "lg", "group")}>
+            <button onClick={() => openRequest()} className={buttonClass("primary", "lg", "group btn-sheen")}>
               업무 시작하기
               <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
             </button>

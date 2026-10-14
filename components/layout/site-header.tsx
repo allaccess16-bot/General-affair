@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
+import { AnimatePresence, motion, useMotionValueEvent, useScroll, useSpring } from "framer-motion";
 import { Bell, LayoutDashboard, Menu, Plus, Search, ShieldCheck, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,7 +22,8 @@ export const NAV = [
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const { scrollY } = useScroll();
+  const { scrollY, scrollYProgress } = useScroll();
+  const progress = useSpring(scrollYProgress, { stiffness: 220, damping: 32, mass: 0.4 });
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { openRequest } = useRequests();
@@ -39,6 +40,12 @@ export function SiteHeader() {
         scrolled ? "border-b border-line/80 bg-white/80 shadow-[0_8px_30px_-20px_rgb(15_31_27/0.25)] backdrop-blur-xl" : "bg-transparent",
       )}
     >
+      {/* 스크롤 진행 표시 */}
+      <motion.div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-[2px] origin-left bg-gradient-to-r from-brand-400 via-brand-500 to-[#3cc4a0]"
+        style={{ scaleX: progress, opacity: scrolled ? 1 : 0 }}
+      />
       <div className="mx-auto flex h-[72px] max-w-[1320px] items-center gap-4 px-4 md:px-8">
         <Logo />
 

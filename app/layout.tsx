@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
+import { WelcomeIntro } from "@/components/layout/welcome-intro";
 import { DemoStoreProvider } from "@/components/providers/demo-store";
 import { RequestsProvider } from "@/components/providers/requests-provider";
+import { INTRO_BOOT_SCRIPT } from "@/lib/intro";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,8 +19,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: INTRO_BOOT_SCRIPT }} />
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
@@ -27,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-dvh overflow-x-hidden">
         <DemoStoreProvider>
           <RequestsProvider>
+            <WelcomeIntro />
             <SiteHeader />
             <main>{children}</main>
             <SiteFooter />
