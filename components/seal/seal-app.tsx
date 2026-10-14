@@ -52,7 +52,8 @@ function KindPill({ k }: { k: SealKind }) {
 }
 
 export function SealApp() {
-  const { seal, ready, role } = useDemo();
+  const { seal, ready, isAdmin } = useDemo();
+  const admin = isAdmin("seal");
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>("user");
   const [form, setForm] = useState(false);
@@ -84,8 +85,8 @@ export function SealApp() {
           onChange={setTab}
           items={[
             { value: "user", label: "날인 신청 · 내 신청" },
-            { value: "admin", label: "승인 · 날인 처리", locked: role !== "admin", badge: role === "admin" ? pending + toSeal : undefined },
-            { value: "print", label: "목록 출력 · 사용대장", locked: role !== "admin" },
+            { value: "admin", label: "승인 · 날인 처리", locked: !admin, badge: admin ? pending + toSeal : undefined },
+            { value: "print", label: "목록 출력 · 사용대장", locked: !admin },
           ]}
           className="w-fit max-w-full"
         />
@@ -95,12 +96,12 @@ export function SealApp() {
           <>
             {tab === "user" && <SealUser onNew={() => setForm(true)} />}
             {tab === "admin" && (
-              <AdminGate>
+              <AdminGate module="seal">
                 <SealAdmin />
               </AdminGate>
             )}
             {tab === "print" && (
-              <AdminGate>
+              <AdminGate module="seal">
                 <SealPrint />
               </AdminGate>
             )}

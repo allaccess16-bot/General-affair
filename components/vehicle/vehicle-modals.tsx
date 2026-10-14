@@ -54,15 +54,17 @@ function ScheduleNotice({ check }: { check: ReturnType<typeof useScheduleCheck> 
 
 /** 차량 예약 신청 — 기존 carForm의 3단계 구성과 필수값·검증 규칙 동일 */
 export function VehicleFormModal({ open, onClose, initialDate, initialVehicle }: { open: boolean; onClose: () => void; initialDate?: string; initialVehicle?: string }) {
-  const { vehicleCreate, notify } = useDemo();
+  const { vehicleCreate, notify, me } = useDemo();
   const [f, setF] = useState<VehicleInput>(emptyInput());
   useEffect(() => {
-    if (open) setF(emptyInput(initialDate, initialVehicle));
-  }, [open, initialDate, initialVehicle]);
+    if (!open) return;
+    const base = emptyInput(initialDate, initialVehicle);
+    setF(me ? { ...base, applicant: me.name, driver: me.name, department: me.department, contact: me.contact } : base);
+  }, [open, initialDate, initialVehicle, me]);
   const set = <K extends keyof VehicleInput>(k: K, v: VehicleInput[K]) => setF((p) => ({ ...p, [k]: v }));
   const check = useScheduleCheck(f);
   const ok =
-    (Object.keys(f) as (keyof VehicleInput)[]).every((k) => String(f[k] ?? "").trim().length > 0) &&
+    (Object.keys(f) as (keyof VehicleInput)[]).filter((k) => !(me && k === "reservation_password")).every((k) => String(f[k] ?? "").trim().length > 0) &&
     validFullName(f.applicant) &&
     validFullName(f.driver) &&
     validContact(f.contact) &&
@@ -139,9 +141,11 @@ export function VehicleFormModal({ open, onClose, initialDate, initialVehicle }:
           <Field label="운전자" required>
             <input className="input" placeholder="운전자 성명" value={f.driver} onChange={(e) => set("driver", e.target.value)} />
           </Field>
-          <Field label="운행기록 작성용 비밀번호" required hint="운행 완료 기록·신청 수정 시 사용합니다." className="sm:col-span-2">
-            <input type="password" className="input" placeholder="운행 완료 기록 작성 시 사용" value={f.reservation_password} onChange={(e) => set("reservation_password", e.target.value)} />
-          </Field>
+          {!me && (
+            <Field label="운행기록 작성용 비밀번호" required hint="운행 완료 기록·신청 수정 시 사용합니다." className="sm:col-span-2">
+              <input type="password" className="input" placeholder="운행 완료 기록 작성 시 사용" value={f.reservation_password} onChange={(e) => set("reservation_password", e.target.value)} />
+            </Field>
+          )}
         </FormSection>
         <FormSection step="STEP 3" title="사용 정보">
           <Field label="사용 목적" required>
@@ -159,7 +163,9 @@ export function VehicleFormModal({ open, onClose, initialDate, initialVehicle }:
 
 /** 차량 예약 수정 — 승인 전(신청) 건만, 예약 비밀번호 확인 */
 export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null; onClose: () => void }) {
-  const { vehicleEdit, notify, live } = useDemo();
+  const { vehicleEdit, notify, live, me, isAdmin } = useDemo();
+  // 본인 신청이거나 차량 관리자면 비밀번호 확인 생략 (이관 데이터는 기존 비밀번호)
+  const needPw = !(me && c && (c.created_by === me.id || isAdmin("vehicle")));
   const [f, setF] = useState<VehicleInput>(emptyInput());
   const [pw, setPw] = useState("");
   useEffect(() => {
@@ -229,9 +235,11 @@ export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null;
         <Field label="연락처/내선">
           <input className="input" value={f.contact} onChange={(e) => set("contact", e.target.value)} />
         </Field>
-        <Field label="예약 시 입력한 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."} className="sm:col-span-2">
-          <input type="password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
-        </Field>
+        {needPw && (
+          <Field label="예약 시 입력한 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."} className="sm:col-span-2">
+            <input type="password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
+          </Field>
+        )}
       </div>
     </Modal>
   );
@@ -239,7 +247,8 @@ export function VehicleEditModal({ c, onClose }: { c: VehicleReservation | null;
 
 /** 운행 완료 기록 — 차량 사용자가 승인 건에 대해 직접 작성 */
 export function VehicleCompleteModal({ c, onClose }: { c: VehicleReservation | null; onClose: () => void }) {
-  const { vehicleComplete, notify, live } = useDemo();
+  const { vehicleComplete, notify, live, me, isAdmin } = useDemo();
+  const needPw = !(me && c && (c.created_by === me.id || isAdmin("vehicle")));
   const [f, setF] = useState<CompletionInput>({});
   const [pw, setPw] = useState("");
   useEffect(() => {
@@ -262,7 +271,7 @@ export function VehicleCompleteModal({ c, onClose }: { c: VehicleReservation | n
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!c) return;
-    if (!f.complete_department || !f.complete_name || f.odometer_before == null || f.odometer_after == null || !pw) return notify("필수 항목을 모두 입력해주세요.", true);
+    if (!f.complete_department || !f.complete_name || f.odometer_before == null || f.odometer_after == null || (needPw && !pw)) return notify("필수 항목을 모두 입력해주세요.", true);
     const r = await vehicleComplete(c.id, pw, { ...f, fuel_cost: Number(f.fuel_cost || 0), parking_cost: Number(f.parking_cost || 0), etc_cost: Number(f.etc_cost || 0) });
     if (!r.ok) return notify(r.error, true);
     notify("운행기록이 저장되었습니다.");
@@ -320,9 +329,11 @@ export function VehicleCompleteModal({ c, onClose }: { c: VehicleReservation | n
           <Field label="비고" className="sm:col-span-2">
             <textarea className="input h-20 py-3" value={f.complete_memo ?? ""} onChange={(e) => set("complete_memo", e.target.value)} />
           </Field>
-          <Field label="예약 시 입력한 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."} className="sm:col-span-2">
-            <input type="password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
-          </Field>
+          {needPw && (
+            <Field label="예약 시 입력한 비밀번호" required hint={live ? undefined : "데모 데이터의 비밀번호는 1234 입니다."} className="sm:col-span-2">
+              <input type="password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} />
+            </Field>
+          )}
         </form>
       )}
     </Modal>

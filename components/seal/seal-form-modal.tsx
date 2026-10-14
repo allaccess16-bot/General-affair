@@ -34,11 +34,11 @@ const empty = (): SealInput => ({
 
 /** 인장 날인 신청서 */
 export function SealFormModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated?: (no: string) => void }) {
-  const { sealCreate, notify } = useDemo();
+  const { sealCreate, notify, me } = useDemo();
   const [f, setF] = useState<SealInput>(empty);
   useEffect(() => {
-    if (open) setF(empty());
-  }, [open]);
+    if (open) setF(me ? { ...empty(), requester_name: me.name, department: me.department, contact: me.contact } : empty());
+  }, [open, me]);
   const set = <K extends keyof SealInput>(k: K, v: SealInput[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const missing = useMemo(() => {

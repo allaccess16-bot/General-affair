@@ -23,17 +23,19 @@ const EMPTY = (): GaRequestInput => ({
 
 /** 새 요청 등록 — 기존 reqForm 필드·필수값·검증 규칙과 동일 */
 export function GaFormModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { gaCreate, notify } = useDemo();
+  const { gaCreate, notify, me } = useDemo();
   const [f, setF] = useState<GaRequestInput>(EMPTY);
   useEffect(() => {
-    if (open) setF(EMPTY());
-  }, [open]);
+    if (open) setF(me ? { ...EMPTY(), requester_name: me.name, department: me.department, contact: me.contact } : EMPTY());
+  }, [open, me]);
   const set = <K extends keyof GaRequestInput>(k: K, v: GaRequestInput[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const ok = useMemo(() => {
-    const required = (Object.keys(f) as (keyof GaRequestInput)[]).every((k) => String(f[k] ?? "").trim().length > 0);
+    // 로그인 직원은 본인 확인이 되므로 수정 비밀번호 불필요
+    const keys = (Object.keys(f) as (keyof GaRequestInput)[]).filter((k) => !(me && k === "edit_password"));
+    const required = keys.every((k) => String(f[k] ?? "").trim().length > 0);
     return required && validFullName(f.requester_name) && validContact(f.contact);
-  }, [f]);
+  }, [f, me]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,9 +109,11 @@ export function GaFormModal({ open, onClose }: { open: boolean; onClose: () => v
           <Field label="연락처/내선" required>
             <input className="input" placeholder="연락처 또는 내선번호" value={f.contact} onChange={(e) => set("contact", e.target.value)} />
           </Field>
-          <Field label="수정 비밀번호" required hint="내 요청을 수정할 때 사용합니다.">
-            <input type="password" className="input" placeholder="수정 비밀번호" value={f.edit_password} onChange={(e) => set("edit_password", e.target.value)} />
-          </Field>
+          {!me && (
+            <Field label="수정 비밀번호" required hint="내 요청을 수정할 때 사용합니다.">
+              <input type="password" className="input" placeholder="수정 비밀번호" value={f.edit_password} onChange={(e) => set("edit_password", e.target.value)} />
+            </Field>
+          )}
         </FormSection>
         <Notice>등록 후 ‘내 요청 조회’에서 이름·부서·연락처로 진행 상태와 관리자 진행사항을 확인할 수 있습니다.</Notice>
       </form>

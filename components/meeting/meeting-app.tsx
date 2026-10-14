@@ -41,7 +41,8 @@ function useNow(ms = 30000) {
 }
 
 export function MeetingApp() {
-  const { ready, role, rooms } = useDemo();
+  const { ready, isAdmin, rooms } = useDemo();
+  const admin = isAdmin("meeting");
   const params = useSearchParams();
   const [tab, setTab] = useState<Tab>("overview");
   const [booking, setBooking] = useState<{ open: boolean; preset?: BookingPreset }>({ open: false });
@@ -78,7 +79,7 @@ export function MeetingApp() {
             { value: "calendar", label: "월간 달력" },
             { value: "week", label: "회의실별 7일" },
             { value: "mine", label: "내 예약" },
-            { value: "admin", label: "관리자", locked: role !== "admin" },
+            { value: "admin", label: "관리자", locked: !admin },
             { value: "guide", label: "이용 안내" },
           ]}
           className="w-fit max-w-full"
@@ -92,7 +93,7 @@ export function MeetingApp() {
             {tab === "week" && <WeekView onBook={openBooking} onDetail={setDetail} />}
             {tab === "mine" && <Mine />}
             {tab === "admin" && (
-              <AdminGate>
+              <AdminGate module="meeting">
                 <Admin />
               </AdminGate>
             )}
@@ -224,7 +225,7 @@ function DetailModal({ r, rooms, onClose }: { r: MeetingReservation | null; room
 
 /* ---------------- 내 예약 ---------------- */
 function Mine() {
-  const { meeting, myMeeting, rooms, meetingManage, meetingCancelSeries, meetingFindByCode, notify } = useDemo();
+  const { meeting, myMeeting, rooms, meetingManage, meetingCancelSeries, meetingFindByCode, notify, me } = useDemo();
   const now = useNow(15000);
   const [code, setCode] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -264,7 +265,7 @@ function Mine() {
       <Card className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 className="font-bold">내 예약</h3>
-          <p className="text-sm text-ink-3">이 기기에서 예약한 내역은 자동 표시됩니다. 다른 기기에서는 예약코드로 조회하세요.</p>
+          <p className="text-sm text-ink-3">{me ? "내 계정으로 예약한 내역은 어느 기기에서나 자동 표시됩니다. 로그인 전에 만든 예약은 예약코드로 불러오세요." : "이 기기에서 예약한 내역은 자동 표시됩니다. 다른 기기에서는 예약코드로 조회하세요."}</p>
         </div>
         <form
           className="flex gap-2"

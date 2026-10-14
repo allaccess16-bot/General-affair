@@ -3,15 +3,28 @@
 import { Lock, ShieldCheck } from "lucide-react";
 import { useDemo } from "@/components/providers/demo-store";
 import { Button } from "@/components/ui/button";
+import type { ModuleKey } from "@/lib/modules";
 
 /**
  * 관리자 전용 영역 — 기존 시스템의 비밀번호 로그인을 대신합니다.
  * 실서비스에서는 로그인 사용자의 역할(RBAC)과 DB RLS로 판단합니다.
  */
-export function AdminGate({ children, title = "관리자 전용 화면입니다" }: { children: React.ReactNode; title?: string }) {
-  const { role, setRole, ready } = useDemo();
+export function AdminGate({ children, title = "관리자 전용 화면입니다", module, any }: { children: React.ReactNode; title?: string; module?: ModuleKey; any?: boolean }) {
+  const { role, setRole, ready, live, isAdmin } = useDemo();
   if (!ready) return <div className="h-64 animate-pulse rounded-3xl bg-white" />;
-  if (role === "admin") return <>{children}</>;
+  if (any ? role === "admin" : isAdmin(module)) return <>{children}</>;
+  if (live)
+    return (
+      <div className="rounded-[28px] border border-line bg-white p-8 text-center shadow-card md:p-12">
+        <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600">
+          <Lock className="size-6" />
+        </span>
+        <h3 className="mt-5 text-xl font-bold">{title}</h3>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-ink-2">
+          이 화면은 해당 업무의 <b>관리자 권한</b>이 있는 직원만 이용할 수 있습니다. 권한이 필요하면 경영지원부 최고관리자에게 요청해주세요.
+        </p>
+      </div>
+    );
   return (
     <div className="rounded-[28px] border border-line bg-white p-8 text-center shadow-card md:p-12">
       <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600">

@@ -16,7 +16,8 @@ export const LIVE = Boolean(URL && KEY);
 
 let client: SupabaseClient | null = null;
 export function db() {
-  if (!client) client = createClient(URL, KEY, { auth: { persistSession: false } });
+  // 로그인 세션은 브라우저에 보관하고 자동 갱신 → 모든 조회·저장이 로그인한 직원 권한(RLS)으로 실행
+  if (!client) client = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "hanaworks-auth" } });
   return client;
 }
 
@@ -24,6 +25,19 @@ export type LiveData = { ga: GaRequest[]; vehicles: VehicleReservation[]; meetin
 
 /** DB 오류 → 사용자 메시지 */
 const FRIENDLY: [RegExp, string][] = [
+  [/Invalid login credentials/i, "이메일 또는 비밀번호가 올바르지 않습니다."],
+  [/User already registered|already been registered/i, "이미 가입된 이메일입니다. 로그인해주세요."],
+  [/Password should be at least (\d+)/i, "비밀번호는 $1자 이상이어야 합니다."],
+  [/Email not confirmed/i, "메일 인증이 완료되지 않았습니다. 받은 메일의 인증 링크를 눌러주세요."],
+  [/EMAIL_DOMAIN_NOT_ALLOWED|Database error saving new user/i, "가입할 수 없는 메일 주소입니다. 회사 메일로 가입해주세요."],
+  [/rate limit/i, "요청이 많아 잠시 후 다시 시도해주세요."],
+  [/Unable to validate email address|invalid format/i, "이메일 형식이 올바르지 않습니다."],
+  [/NOT_AUTHORIZED|JWT expired|permission denied/i, "로그인 후 관리자 승인을 받은 직원만 이용할 수 있습니다. 다시 로그인해주세요."],
+  [/NOT_ADMIN/, "이 업무의 관리자 권한이 필요합니다."],
+  [/NOT_OWNER: (.*)/, "$1"],
+  [/LAST_ADMIN: (.*)/, "$1"],
+  [/PROFILE_REQUIRED: (.*)/, "$1"],
+  [/row-level security/i, "권한이 없어 저장할 수 없습니다."],
   [/meeting_no_overlap|RESERVATION_CONFLICT/, "이미 예약된 시간입니다. 다른 시간이나 회의실을 선택해주세요."],
   [/RECURRING_CONFLICT/, "기간 중 다른 예약이 먼저 등록되어 장기예약 전체가 생성되지 않았습니다."],
   [/vehicle_no_overlap|VEHICLE_CONFLICT/, "선택한 차량의 기존 예약 시간과 겹칩니다. 다른 시간대를 선택해주세요."],
@@ -81,7 +95,7 @@ export async function loadAll(): Promise<LiveData> {
       s
         .schema("ga")
         .from("requests")
-        .select("id,request_date,title,description,requester_name,department,contact,location,category,urgency,status,assignee,admin_memo,completed_at,created_at,updated_at")
+        .select("id,request_date,title,description,requester_name,department,contact,location,category,urgency,status,assignee,admin_memo,completed_at,created_by,created_at,updated_at")
         .order("created_at", { ascending: false })
         .order("id"),
     ),
@@ -90,7 +104,7 @@ export async function loadAll(): Promise<LiveData> {
         .schema("vehicle")
         .from("reservations_legacy")
         .select(
-          "id,vehicle_name,vehicle_number,use_date,start_date,start_time,end_date,end_time,applicant,department,contact,driver,purpose,destination,status,complete_department,complete_name,odometer_before,odometer_after,total_distance,fuel_cost,parking_cost,etc_cost,complete_memo,completed_at,created_at,updated_at",
+          "id,vehicle_name,vehicle_number,use_date,start_date,start_time,end_date,end_time,applicant,department,contact,driver,purpose,destination,status,complete_department,complete_name,odometer_before,odometer_after,total_distance,fuel_cost,parking_cost,etc_cost,complete_memo,completed_at,created_by,created_at,updated_at",
         )
         .order("start_at", { ascending: false })
         .order("id"),
@@ -294,4 +308,81 @@ export async function sealTransition(
 
 function s() {
   return db();
+}
+
+/* ------------------------------ 로그인 · 직원 ------------------------------ */
+export type ModuleKeyDb = "ga" | "vehicle" | "meeting" | "seal";
+export type Profile = {
+  id: string;
+  email: string;
+  name: string;
+  department: string;
+  contact: string;
+  role: "user" | "admin";
+  /** 비어 있으면 전 모듈 관리자(최고관리자) */
+  admin_modules: ModuleKeyDb[];
+  status: "pending" | "active" | "disabled";
+  approved_at: string | null;
+  created_at: string;
+};
+export type SignUpInput = { email: string; password: string; name: string; department: string; contact: string };
+const PROFILE_COLS = "id,email,name,department,contact,role,admin_modules,status,approved_at,created_at";
+
+export async function authSession() {
+  const { data } = await s().auth.getSession();
+  return data.session;
+}
+export function onAuthChange(cb: () => void) {
+  const { data } = s().auth.onAuthStateChange(() => cb());
+  return () => data.subscription.unsubscribe();
+}
+export async function signIn(email: string, password: string) {
+  const { error } = await s().auth.signInWithPassword({ email: email.trim(), password });
+  if (error) throw error;
+}
+/** 반환: 바로 로그인되면 true, 메일 인증이 필요하면 false */
+export async function signUp(i: SignUpInput) {
+  const { data, error } = await s().auth.signUp({
+    email: i.email.trim(),
+    password: i.password,
+    options: { data: { name: i.name.trim(), department: i.department, contact: i.contact.trim() } },
+  });
+  if (error) throw error;
+  return Boolean(data.session);
+}
+export async function signOut() {
+  await s().auth.signOut();
+}
+export async function myProfile(): Promise<Profile | null> {
+  const session = await authSession();
+  if (!session) return null;
+  const rows = await q<Profile[]>(s().schema("core").from("profiles").select(PROFILE_COLS).eq("id", session.user.id));
+  return rows[0] ?? null;
+}
+export async function updateMyProfile(name: string, department: string, contact: string) {
+  await q(s().schema("core").rpc("update_my_profile", { p_name: name, p_department: department, p_contact: contact }));
+}
+export async function listProfiles() {
+  return q<Profile[]>(s().schema("core").from("profiles").select(PROFILE_COLS).order("created_at", { ascending: false }));
+}
+export async function adminUpdateProfile(id: string, status: Profile["status"], role: Profile["role"], modules: ModuleKeyDb[]) {
+  await q(s().schema("core").rpc("admin_update_profile", { p_id: id, p_status: status, p_role: role, p_admin_modules: modules }));
+}
+export type AuthSettings = { auto_approve: boolean; allowed_email_domains: string[] };
+export async function getSettings(): Promise<AuthSettings> {
+  const rows = await q<{ key: string; value: unknown }[]>(s().schema("core").from("settings").select("key,value"));
+  const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  return { auto_approve: m.auto_approve === true, allowed_email_domains: Array.isArray(m.allowed_email_domains) ? (m.allowed_email_domains as string[]) : [] };
+}
+export async function setSetting(key: keyof AuthSettings, value: unknown) {
+  await q(s().schema("core").rpc("admin_set_setting", { p_key: key, p_value: value }));
+}
+/** 가입 화면용 부서 목록 (로그인 전 조회 가능) */
+export async function listDepartments() {
+  const rows = await q<{ name: string }[]>(s().schema("core").from("departments").select("name").order("sort_order"));
+  return rows.map((r) => r.name);
+}
+/** 로그인 직원 본인이 만든 회의실 예약 */
+export async function myMeetingIds() {
+  return q<string[]>(s().schema("meeting").rpc("my_reservation_ids"));
 }

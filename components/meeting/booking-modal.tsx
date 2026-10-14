@@ -31,7 +31,7 @@ const WEEKDAYS: [number, string][] = [[1, "월"], [2, "화"], [3, "수"], [4, "�
  * 반복·장기예약은 기간 중 1건이라도 겹치면 전체 미생성, 충돌 일정 상세 표시
  */
 export function BookingModal({ open, preset, onClose }: { open: boolean; preset?: BookingPreset; onClose: () => void }) {
-  const { rooms, meeting, meetingCreate, notify } = useDemo();
+  const { rooms, meeting, meetingCreate, notify, me } = useDemo();
   const [mode, setMode] = useState<"single" | "recurring">("single");
   const [date, setDate] = useState(todayStr());
   const [repeatEnd, setRepeatEnd] = useState(addDays(todayStr(), 27));
@@ -58,9 +58,14 @@ export function BookingModal({ open, preset, onClose }: { open: boolean; preset?
     setWeekdays(new Set([isoDow(d)]));
     setRoomId(preset?.roomId ?? "");
     setTitle("");
+    // 로그인 직원은 예약자·부서 자동 입력 (이전에 입력한 값이 없을 때)
+    if (me) {
+      setName((v) => v || me.name);
+      setDept((v) => v || me.department);
+    }
     setResult(null);
     setServerConflicts([]);
-  }, [open, preset]);
+  }, [open, preset, me]);
 
   const dates = useMemo(
     () => (mode === "single" ? [date] : repeatEnd >= date && weekdays.size ? recurrenceDates(date, repeatEnd, weekdays, addDays) : []),

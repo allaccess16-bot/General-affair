@@ -41,6 +41,8 @@ export type VehicleReservation = {
   complete_memo?: string | null;
   completed_at?: string | null;
   created_at: string;
+  /** 작성한 직원 (로그인 도입 이후 건) */
+  created_by?: string | null;
   updated_at: string;
 };
 
