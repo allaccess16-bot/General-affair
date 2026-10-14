@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export function SectionHeading({
@@ -25,12 +28,32 @@ export function SectionHeading({
     >
       <div className={cn(align === "center" && "max-w-2xl")}>
         {eyebrow && (
-          <p className="mb-3 inline-flex items-center gap-2 text-xs font-bold tracking-[0.18em] text-brand-600">
-            <span className="h-px w-6 bg-brand-400" />
+          <motion.p
+            className="mb-3 inline-flex items-center gap-2 text-xs font-bold tracking-[0.18em] text-brand-600"
+            initial={{ opacity: 0, x: -8 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, margin: "-60px" }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <motion.span
+              className="h-px w-6 origin-left bg-brand-400"
+              initial={{ scaleX: 0 }}
+              whileInView={{ scaleX: 1 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
+            />
             {eyebrow}
-          </p>
+          </motion.p>
         )}
-        <h2 className="text-[26px] font-extrabold leading-tight tracking-tight text-ink md:text-[34px]">{title}</h2>
+        <motion.h2
+          className="text-[26px] font-extrabold leading-tight tracking-tight text-ink md:text-[34px]"
+          initial={{ opacity: 0, y: 18, filter: "blur(6px)" }}
+          whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+        >
+          {title}
+        </motion.h2>
         {description && <p className="mt-3 text-[15px] leading-relaxed text-ink-2 md:text-base">{description}</p>}
       </div>
       {action}

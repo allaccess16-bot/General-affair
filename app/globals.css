@@ -75,6 +75,33 @@
   *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
+/* 웰컴 인트로: 재생하지 않는 경우 첫 페인트부터 숨김, 재생 중엔 스크롤 잠금 */
+html:not([data-intro="play"]) .hw-intro { display: none; }
+html[data-intro="play"] body { overflow: hidden; }
+.intro-grid {
+  background-image:
+    linear-gradient(to right, rgb(185 243 223 / 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(185 243 223 / 0.08) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* 버튼 위로 빛이 한 번 지나가는 효과 */
+.btn-sheen { position: relative; overflow: hidden; isolation: isolate; }
+.btn-sheen::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.35) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.btn-sheen:hover::after { transform: translateX(120%); }
+
+/* 카드 위 마우스를 따라오는 은은한 빛 */
+.spotlight::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit;
+  opacity: 0; transition: opacity 0.35s;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--spot, #00775f) 14%, transparent), transparent 60%);
+}
+.spotlight:hover::before { opacity: 1; }
+
 /* Recharts 포커스 테두리 제거 */
 .recharts-wrapper *:focus { outline: none; }
 
