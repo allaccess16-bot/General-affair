@@ -61,36 +61,51 @@ async function q<T>(p: PromiseLike<{ data: T | null; error: unknown }>): Promise
   return data as T;
 }
 
+/** Supabase API는 한 번에 최대 1,000건만 돌려주므로 1,000건씩 나눠 끝까지 읽는다 */
+const PAGE = 1000;
+type Ranged<T> = { range: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }> };
+async function all<T>(build: () => Ranged<T>): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const rows = await q<T[]>(build().range(from, from + PAGE - 1));
+    out.push(...(rows ?? []));
+    if (!rows || rows.length < PAGE) return out;
+  }
+}
+
 /* ------------------------------ 조회 ------------------------------ */
 export async function loadAll(): Promise<LiveData> {
   const s = db();
   const [ga, vehicles, meeting, rooms, seal, history] = await Promise.all([
-    q(
+    all(() =>
       s
         .schema("ga")
         .from("requests")
         .select("id,request_date,title,description,requester_name,department,contact,location,category,urgency,status,assignee,admin_memo,completed_at,created_at,updated_at")
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: false })
+        .order("id"),
     ),
-    q(
+    all(() =>
       s
         .schema("vehicle")
         .from("reservations_legacy")
         .select(
           "id,vehicle_name,vehicle_number,use_date,start_date,start_time,end_date,end_time,applicant,department,contact,driver,purpose,destination,status,complete_department,complete_name,odometer_before,odometer_after,total_distance,fuel_cost,parking_cost,etc_cost,complete_memo,completed_at,created_at,updated_at",
         )
-        .order("start_at", { ascending: false }),
+        .order("start_at", { ascending: false })
+        .order("id"),
     ),
-    q(
+    all(() =>
       s
         .schema("meeting")
         .from("reservations_public")
         .select("id,room_id,title,organizer_name,department,attendee_count,start_at,end_at,status,series_id,recurrence_label,checked_in_at,cancelled_at,cancel_reason,created_at,updated_at")
-        .order("start_at"),
+        .order("start_at")
+        .order("id"),
     ),
     q(s.schema("meeting").from("rooms").select("id,floor,name,capacity,location,sort_order,active").order("floor").order("sort_order")),
-    q(s.schema("seal").from("requests").select("*").order("created_at", { ascending: false })),
-    q(s.schema("seal").from("request_history").select("request_id,at,action,actor,note").order("at")),
+    all(() => s.schema("seal").from("requests").select("*").order("created_at", { ascending: false }).order("id")),
+    all(() => s.schema("seal").from("request_history").select("request_id,at,action,actor,note").order("at").order("id")),
   ]);
 
   const hist = new Map<string, SealHistory[]>();
