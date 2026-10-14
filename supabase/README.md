@@ -8,6 +8,7 @@
 | `migrations/20261014000004_meeting.sql` | 회의실 `meeting.rooms`, `meeting.reservations` + **중복 예약 DB 차단**, 예약·반복예약·입실확인·취소·자동취소 함수 |
 | `migrations/20261014000005_seal.sql` | 인장 날인 `seal.requests` (법인인감/직인, 사전 승인 증빙, 증명서 발급 희망), 신청번호 자동 발급, 상태 전이 함수, 이력(추가만), 출력용 뷰 |
 | `migrations/20261014000006_portal.sql` | 통합 대시보드 뷰 `core.v_work_items` |
+| `migrations/20261014000007_meeting_cron.sql` | 회의실 자동취소·자동완료 1분 스케줄 (pg_cron) |
 | `import/legacy_import.sql` | 기존 3개 시스템 CSV → 새 DB 이관 (멱등, 제외 건 사유 기록, 건수 검증 뷰) |
 | `db-tests/run_tests.sql` | 제약·함수 검증 36개 |
 | `db-tests/concurrency_test.sh` | 동시 20건 예약 경합 → 1건만 저장되는지 확인 |
@@ -33,9 +34,10 @@ constraint meeting_no_overlap exclude using gist (
 
 1. Supabase New project → **Connect GitHub** → 저장소 `allaccess16-bot/General-affair` 선택
 2. Supabase directory: `supabase` (기본값) · Production branch: `main`
-3. `main`에 반영되면 `supabase/migrations/` 파일이 이름(타임스탬프) 순서대로 자동 적용됩니다. 이미 적용된 파일은 다시 실행되지 않습니다.
-4. 생성 후 Dashboard → Settings → API → **Exposed schemas**에 `core, ga, vehicle, meeting, seal` 추가
-5. Dashboard → Database → Extensions에서 `pg_cron`을 켜고 아래 자동취소 스케줄 등록
+3. Project Settings → Integrations → GitHub에서 **Deploy to production**을 켜고 Production branch를 `main`으로 지정
+4. 그 다음부터 `main`에 반영되면 `supabase/migrations/` 파일이 이름(타임스탬프) 순서대로 자동 적용됩니다. 이미 적용된 파일은 다시 실행되지 않습니다.
+5. 생성 후 Dashboard → Settings → API → **Exposed schemas**에 `core, ga, vehicle, meeting, seal` 추가
+6. 회의실 자동취소 스케줄(pg_cron)은 `…_meeting_cron.sql`이 자동으로 켜고 등록합니다. 확인: `select jobname, schedule from cron.job;`
 
 > 새 마이그레이션은 기존 파일을 고치지 말고 **새 파일**(`YYYYMMDDHHMMSS_설명.sql`)로 추가합니다. 이미 적용된 파일을 수정해도 원격 DB에는 다시 적용되지 않습니다.
 
