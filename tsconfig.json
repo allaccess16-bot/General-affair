@@ -36,6 +36,8 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "hana-ga-portal",
+    "hana-ga-portal-redesign-v2"
   ]
 }
